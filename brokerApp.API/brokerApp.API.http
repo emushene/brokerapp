@@ -1,0 +1,6 @@
+@brokerApp.API_HostAddress = http://localhost:5137
+
+GET {{brokerApp.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
