@@ -24,10 +24,3 @@ dist-ssr
 *.sw?
 
 # igonore files
-*.env
-*.env.local
-*.env.development.local
-*.env.test.local
-*.env.production.local
-/brokerApp.client/node_modules
-/brokerApp.client/src/lib/firebase.ts
