@@ -35,6 +35,9 @@ public class SubmissionService : ISubmissionService
     {
         var submission = _mapper.Map<Submission>(dto);
         
+        // Ensure Date is Utc to satisfy PostgreSQL requirement
+        submission.Date = DateTime.SpecifyKind(submission.Date, DateTimeKind.Utc);
+        
         submission.AdvisorId = GetFirebaseUserId();
         submission.CreatedAt = DateTime.UtcNow;
 

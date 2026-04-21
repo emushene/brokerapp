@@ -9,8 +9,15 @@ const api = axios.create({
 api.interceptors.request.use(async (config) => {
   const user = auth.currentUser;
   if (user) {
-    const token = await user.getIdToken();
-    config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = await user.getIdToken();
+      console.log('Request token successfully retrieved');
+      config.headers.Authorization = `Bearer ${token}`;
+    } catch (tokenError) {
+      console.error('Error getting auth token:', tokenError);
+    }
+  } else {
+    console.warn('No authenticated user found for request to:', config.url);
   }
   return config;
 }, (error) => {

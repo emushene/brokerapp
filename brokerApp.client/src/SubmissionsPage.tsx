@@ -39,6 +39,13 @@ const SubmissionsPage: React.FC = () => {
     }
   });
 
+  // Log validation errors
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      console.log('Validation errors:', errors);
+    }
+  }, [errors]);
+
   const fetchSubmissions = async () => {
     try {
       const response = await api.get('/Submissions');
@@ -55,9 +62,11 @@ const SubmissionsPage: React.FC = () => {
   }, []);
 
   const onSubmit = async (data: SubmissionFormValues) => {
+    console.log('Submitting data:', data);
     setSubmitting(true);
     try {
-      await api.post('/Submissions', data);
+      const response = await api.post('/Submissions', data);
+      console.log('Submission successful:', response.data);
       setSuccess(true);
       reset();
       fetchSubmissions();
@@ -65,8 +74,12 @@ const SubmissionsPage: React.FC = () => {
         setSuccess(false);
         setShowForm(false);
       }, 2000);
-    } catch (error) {
-      console.error('Error creating submission', error);
+    } catch (error: any) {
+      console.error('Error creating submission:', error);
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        console.error('Error status:', error.response.status);
+      }
     } finally {
       setSubmitting(false);
     }

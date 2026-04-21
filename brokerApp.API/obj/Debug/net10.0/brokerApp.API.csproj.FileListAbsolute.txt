@@ -134,3 +134,4 @@
 /Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/FluentValidation.dll
 /Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/FluentValidation.AspNetCore.dll
 /Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/FluentValidation.DependencyInjectionExtensions.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/obj/Debug/net10.0/brokerApp.API.sourcelink.json
