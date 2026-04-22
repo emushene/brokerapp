@@ -16,13 +16,11 @@ public class Submission
 
     public string ApplicantPhoneNumber { get; set; } = string.Empty;
 
+    public SubmissionType Type { get; set; }
+
     public DateTime Date { get; set; }
 
-    public string IntermediaryName { get; set; } = string.Empty;
-
-    public string IntermediaryCode { get; set; } = string.Empty;
-
-    public string AdvisorId { get; set; } = string.Empty;
+    public ICollection<Advisor> Advisors { get; set; } = new List<Advisor>();
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

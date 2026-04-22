@@ -23,7 +23,7 @@ public class SubmissionCreateDtoValidator : AbstractValidator<SubmissionCreateDt
             .Matches(@"^[0-9+() -]*$").WithMessage("Invalid phone number format.");
 
         RuleFor(x => x.Date).NotEmpty();
-        RuleFor(x => x.IntermediaryName).NotEmpty();
-        RuleFor(x => x.IntermediaryCode).NotEmpty();
+        RuleFor(x => x.Type).IsInEnum();
+        RuleFor(x => x.AdvisorIds).NotEmpty().WithMessage("At least one advisor must be specified.");
     }
 }

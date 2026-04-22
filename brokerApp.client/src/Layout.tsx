@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, LogOut, User as UserIcon, Menu } from 'lucide-react';
+import { LayoutDashboard, FileText, LogOut, User as UserIcon, Menu, Users } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 const Layout: React.FC = () => {
@@ -16,6 +16,7 @@ const Layout: React.FC = () => {
   const navItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
     { label: 'Submissions', path: '/submissions', icon: FileText },
+    { label: 'Manage Advisors', path: '/advisors', icon: Users },
   ];
 
   return (

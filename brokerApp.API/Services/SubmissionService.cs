@@ -37,9 +37,20 @@ public class SubmissionService : ISubmissionService
         
         // Ensure Date is Utc to satisfy PostgreSQL requirement
         submission.Date = DateTime.SpecifyKind(submission.Date, DateTimeKind.Utc);
-        
-        submission.AdvisorId = GetFirebaseUserId();
         submission.CreatedAt = DateTime.UtcNow;
+
+        var firebaseUserId = GetFirebaseUserId();
+        
+        // Get advisors from provided IDs
+        var advisors = await _repository.GetAdvisorsByIdsAsync(dto.AdvisorIds);
+        submission.Advisors = advisors.ToList();
+
+        // Ensure the logged-in advisor is also linked
+        var currentAdvisor = await _repository.GetAdvisorByFirebaseIdAsync(firebaseUserId);
+        if (currentAdvisor != null && !submission.Advisors.Any(a => a.FirebaseId == firebaseUserId))
+        {
+            submission.Advisors.Add(currentAdvisor);
+        }
 
         await _repository.AddAsync(submission);
         await _repository.SaveChangesAsync();
@@ -52,6 +63,12 @@ public class SubmissionService : ISubmissionService
         var advisorId = GetFirebaseUserId();
         var submissions = await _repository.GetByAdvisorIdAsync(advisorId);
         
+        return _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+    }
+
+    public async Task<IEnumerable<SubmissionResponseDto>> GetAllSubmissionsAsync()
+    {
+        var submissions = await _repository.GetAllAsync();
         return _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
     }
 }

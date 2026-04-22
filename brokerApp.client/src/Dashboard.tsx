@@ -2,13 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FilePlus, TrendingUp, Users, Activity, ChevronRight } from 'lucide-react';
 import api from './lib/api';
-
-interface Submission {
-  id: number;
-  applicantSurname: string;
-  premium: number;
-  createdAt: string;
-}
+import type { Submission } from './lib/types';
 
 const Dashboard: React.FC = () => {
   const [submissions, setSubmissions] = useState<Submission[]>([]);

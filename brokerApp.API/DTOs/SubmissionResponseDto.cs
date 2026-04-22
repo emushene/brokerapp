@@ -9,8 +9,8 @@ public class SubmissionResponseDto
     public decimal Premium { get; set; }
     public string SalaryRefNo { get; set; } = string.Empty;
     public string ApplicantPhoneNumber { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
     public DateTime Date { get; set; }
-    public string IntermediaryName { get; set; } = string.Empty;
-    public string IntermediaryCode { get; set; } = string.Empty;
+    public List<AdvisorDto> Advisors { get; set; } = new List<AdvisorDto>();
     public DateTime CreatedAt { get; set; }
 }

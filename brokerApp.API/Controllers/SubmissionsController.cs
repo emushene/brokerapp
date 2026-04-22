@@ -32,7 +32,7 @@ public class SubmissionsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetAll()
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisor()
     {
         try
         {
@@ -43,5 +43,12 @@ public class SubmissionsController : ControllerBase
         {
             return Unauthorized(ex.Message);
         }
+    }
+
+    [HttpGet("all")]
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetAll()
+    {
+        var submissions = await _submissionService.GetAllSubmissionsAsync();
+        return Ok(submissions);
     }
 }

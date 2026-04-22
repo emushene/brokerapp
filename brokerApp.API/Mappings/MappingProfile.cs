@@ -8,7 +8,12 @@ public class MappingProfile : Profile
 {
     public MappingProfile()
     {
-        CreateMap<SubmissionCreateDto, Submission>();
-        CreateMap<Submission, SubmissionResponseDto>();
+        CreateMap<SubmissionCreateDto, Submission>()
+            .ForMember(dest => dest.Advisors, opt => opt.Ignore()); // Handled in Service
+        
+        CreateMap<Submission, SubmissionResponseDto>()
+            .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()));
+            
+        CreateMap<Advisor, AdvisorDto>();
     }
 }

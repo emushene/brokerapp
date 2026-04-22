@@ -8,7 +8,7 @@ public class SubmissionCreateDto
     public decimal Premium { get; set; }
     public string SalaryRefNo { get; set; } = string.Empty;
     public string ApplicantPhoneNumber { get; set; } = string.Empty;
+    public Models.SubmissionType Type { get; set; }
     public DateTime Date { get; set; }
-    public string IntermediaryName { get; set; } = string.Empty;
-    public string IntermediaryCode { get; set; } = string.Empty;
+    public List<int> AdvisorIds { get; set; } = new List<int>();
 }
