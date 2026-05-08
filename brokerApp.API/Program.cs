@@ -32,6 +32,8 @@ builder.Services.AddHttpContextAccessor();
 // Repositories & Services
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
+builder.Services.AddScoped<IFinancialsService, FinancialsService>();
+builder.Services.AddScoped<IFileStorageService, GoogleCloudStorageService>();
 
 // --------------------
 // FIREBASE AUTH FIXED

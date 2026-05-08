@@ -57,9 +57,84 @@ namespace brokerApp.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.ToTable("Advisors");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.AdvisorCommission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AdvisorId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("CommissionAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("DateCalculated")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DatePaid")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsPaid")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PayoutReference")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("PolicyPaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SubmissionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdvisorId");
+
+                    b.HasIndex("PolicyPaymentId");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.ToTable("AdvisorCommissions");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.PolicyPayment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountReceived")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("DateReceived")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("SubmissionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.ToTable("PolicyPayments");
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.Submission", b =>
@@ -92,6 +167,9 @@ namespace brokerApp.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("Method")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("Premium")
                         .HasColumnType("numeric");
 
@@ -99,12 +177,48 @@ namespace brokerApp.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Type")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.ToTable("Submissions");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.SubmissionDocument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("DateModified")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("SubmissionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.ToTable("SubmissionDocuments");
                 });
 
             modelBuilder.Entity("AdvisorSubmission", b =>
@@ -120,6 +234,61 @@ namespace brokerApp.API.Migrations
                         .HasForeignKey("SubmissionsId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.AdvisorCommission", b =>
+                {
+                    b.HasOne("brokerApp.API.Models.Advisor", "Advisor")
+                        .WithMany()
+                        .HasForeignKey("AdvisorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("brokerApp.API.Models.PolicyPayment", "PolicyPayment")
+                        .WithMany("Commissions")
+                        .HasForeignKey("PolicyPaymentId");
+
+                    b.HasOne("brokerApp.API.Models.Submission", "Submission")
+                        .WithMany()
+                        .HasForeignKey("SubmissionId");
+
+                    b.Navigation("Advisor");
+
+                    b.Navigation("PolicyPayment");
+
+                    b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.PolicyPayment", b =>
+                {
+                    b.HasOne("brokerApp.API.Models.Submission", "Submission")
+                        .WithMany()
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.SubmissionDocument", b =>
+                {
+                    b.HasOne("brokerApp.API.Models.Submission", "Submission")
+                        .WithMany("Documents")
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.PolicyPayment", b =>
+                {
+                    b.Navigation("Commissions");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.Submission", b =>
+                {
+                    b.Navigation("Documents");
                 });
 #pragma warning restore 612, 618
         }

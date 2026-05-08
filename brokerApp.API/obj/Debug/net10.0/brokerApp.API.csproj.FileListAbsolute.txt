@@ -135,3 +135,14 @@
 /Users/paulkagwe/Documents/brokerApp/brokerApp.API/obj/Debug/net10.0/brokerApp.API.pdb
 /Users/paulkagwe/Documents/brokerApp/brokerApp.API/obj/Debug/net10.0/brokerApp.API.genruntimeconfig.cache
 /Users/paulkagwe/Documents/brokerApp/brokerApp.API/obj/Debug/net10.0/ref/brokerApp.API.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Apis.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Apis.Auth.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Apis.Core.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Apis.Drive.v3.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/System.Management.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/runtimes/win/lib/net7.0/System.Management.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Api.Gax.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Api.Gax.Rest.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Apis.Storage.v1.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Google.Cloud.Storage.V1.dll
+/Users/paulkagwe/Documents/brokerApp/brokerApp.API/bin/Debug/net10.0/Microsoft.Bcl.AsyncInterfaces.dll

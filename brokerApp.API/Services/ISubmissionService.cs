@@ -7,4 +7,6 @@ public interface ISubmissionService
     Task<SubmissionResponseDto> CreateSubmissionAsync(SubmissionCreateDto dto);
     Task<IEnumerable<SubmissionResponseDto>> GetAdvisorSubmissionsAsync();
     Task<IEnumerable<SubmissionResponseDto>> GetAllSubmissionsAsync();
+    Task<IEnumerable<SubmissionResponseDto>> GetSubmissionsByAdvisorIdAsync(int advisorId);
+    Task<SubmissionResponseDto> UploadDocumentAsync(int submissionId, IFormFile file);
 }

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("brokerApp.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9ec14639beb37a5214be576593a623297c17fbe6")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c8f6f9b757c1b6bcbe1ae85b0a76f5dd056f6fee")]
 [assembly: System.Reflection.AssemblyProductAttribute("brokerApp.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("brokerApp.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

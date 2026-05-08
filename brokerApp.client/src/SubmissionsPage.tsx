@@ -2,10 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { FilePlus, Search, Filter, Loader2, CheckCircle2, Users, Check, ChevronDown, X } from 'lucide-react';
-import api from './lib/api';
-import { SubmissionType } from './lib/types';
+import { FilePlus, Loader2, CheckCircle2, Check, ChevronDown, X, DollarSign, Calendar, Hash, Search, Upload, AlertTriangle } from 'lucide-react';
+import { submissionsApi, advisorsApi, financialsApi } from './lib/api';
+import { SubmissionType, PaymentMethod, SubmissionStatus } from './lib/types';
 import type { Submission, Advisor } from './lib/types';
+import { DataTable } from './components/DataTable';
+import type { Column } from './components/DataTable';
 
 // Validation Schema matching Backend
 const submissionSchema = z.object({
@@ -16,8 +18,10 @@ const submissionSchema = z.object({
   salaryRefNo: z.string().min(1, 'Salary Ref No is required'),
   applicantPhoneNumber: z.string().min(10, 'Phone number must be at least 10 digits'),
   type: z.nativeEnum(SubmissionType),
+  method: z.nativeEnum(PaymentMethod),
   date: z.string().min(1, 'Date is required'),
   advisorIds: z.array(z.number()).min(1, 'At least one advisor must be selected'),
+  applicationForm: z.instanceof(File).optional(),
 });
 
 type SubmissionFormValues = z.infer<typeof submissionSchema>;
@@ -30,6 +34,22 @@ const SubmissionsPage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Payment Modal State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentRef, setPaymentRef] = useState<string>('');
+  const [recordingPayment, setRecordingPayment] = useState(false);
+
+  // Lapse Modal State
+  const [showLapseModal, setShowLapseModal] = useState(false);
+  const [submissionToLapse, setSubmissionToLapse] = useState<Submission | null>(null);
+  const [lapsing, setLapsing] = useState(false);
+
+  // Document Upload State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
+
   // Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [advisorSearch, setAdvisorSearch] = useState('');
@@ -39,6 +59,7 @@ const SubmissionsPage: React.FC = () => {
     resolver: zodResolver(submissionSchema),
     defaultValues: {
       type: SubmissionType.Individual,
+      method: PaymentMethod.Salary,
       date: new Date().toISOString().split('T')[0],
       advisorIds: [],
     }
@@ -46,11 +67,14 @@ const SubmissionsPage: React.FC = () => {
 
   const selectedAdvisorIds = watch('advisorIds');
   const submissionType = watch('type');
+  const paymentMethod = watch('method');
+  const selectedFile = watch('applicationForm');
 
   const fetchSubmissions = async () => {
     try {
-      const response = await api.get('/Submissions/all');
-      setSubmissions(response.data);
+      setLoading(true);
+      const data = await submissionsApi.getAll();
+      setSubmissions(data);
     } catch (error) {
       console.error('Error fetching submissions', error);
     } finally {
@@ -60,8 +84,8 @@ const SubmissionsPage: React.FC = () => {
 
   const fetchAdvisors = async () => {
     try {
-      const response = await api.get('/Advisors');
-      setAvailableAdvisors(response.data);
+      const data = await advisorsApi.getAll();
+      setAvailableAdvisors(data);
     } catch (error) {
       console.error('Error fetching advisors', error);
     }
@@ -86,7 +110,10 @@ const SubmissionsPage: React.FC = () => {
   const onSubmit = async (data: SubmissionFormValues) => {
     setSubmitting(true);
     try {
-      await api.post('/Submissions', data);
+      await submissionsApi.create({
+        ...data,
+        status: SubmissionStatus.Submitted
+      });
       setSuccess(true);
       reset();
       fetchSubmissions();
@@ -98,6 +125,70 @@ const SubmissionsPage: React.FC = () => {
       console.error('Error creating submission:', error);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!selectedSubmission || !paymentAmount) return;
+    setRecordingPayment(true);
+    
+    // Autogenerate reference if not provided
+    const finalRef = paymentRef || `INS-${selectedSubmission.applicantSurname.toUpperCase()}-${new Date().toISOString().slice(2,10).replace(/-/g, '')}-${selectedSubmission.id}`;
+    
+    try {
+      await financialsApi.recordPayment({
+        submissionId: selectedSubmission.id,
+        amountReceived: parseFloat(paymentAmount),
+        dateReceived: new Date().toISOString(),
+        reference: finalRef
+      });
+      setShowPaymentModal(false);
+      setPaymentAmount('');
+      setPaymentRef('');
+      fetchSubmissions();
+    } catch (error) {
+      console.error('Error recording payment:', error);
+    } finally {
+      setRecordingPayment(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showPaymentModal && selectedSubmission && !paymentRef) {
+      const dateStr = new Date().toISOString().slice(2,10).replace(/-/g, '');
+      setPaymentRef(`INS-${selectedSubmission.applicantSurname.toUpperCase()}-${dateStr}-${selectedSubmission.id}`);
+    }
+  }, [showPaymentModal, selectedSubmission]);
+
+  const handleLapseSubmission = async () => {
+    if (!submissionToLapse) return;
+    setLapsing(true);
+    try {
+      await financialsApi.handleLapse(submissionToLapse.id);
+      setShowLapseModal(false);
+      setSubmissionToLapse(null);
+      fetchSubmissions();
+    } catch (error) {
+      console.error('Error lapsing submission:', error);
+    } finally {
+      setLapsing(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || uploadingDocId === null) return;
+
+    try {
+      setLoading(true);
+      await submissionsApi.uploadDocument(uploadingDocId, file);
+      fetchSubmissions();
+    } catch (error) {
+      console.error('Error uploading document:', error);
+    } finally {
+      setUploadingDocId(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setLoading(false);
     }
   };
 
@@ -122,8 +213,152 @@ const SubmissionsPage: React.FC = () => {
 
   const selectedAdvisorsData = availableAdvisors.filter(a => selectedAdvisorIds.includes(a.id));
 
+  const columns: Column<Submission>[] = [
+    {
+      header: 'Status',
+      accessor: (s) => (
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter border ${
+          s.status === 'Active' 
+            ? 'bg-green-500/20 text-green-400 border-green-500/30' 
+            : s.status === 'Submitted'
+            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+            : s.status === 'Lapsed'
+            ? 'bg-red-500/20 text-red-400 border-red-500/30'
+            : 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+        }`}>
+          {s.status}
+        </span>
+      ),
+      className: 'w-24'
+    },
+    {
+      header: 'Applicant',
+      accessor: (s) => (
+        <div>
+          <div className="font-bold text-white">{s.applicantSurname}, {s.initials}</div>
+          <div className="text-[10px] text-slate-500">{s.applicantPhoneNumber}</div>
+        </div>
+      )
+    },
+    {
+      header: 'ID & Type',
+      accessor: (s) => (
+        <div>
+          <div className="text-slate-300 font-mono text-xs">{s.idNumber}</div>
+          <div className="text-[10px] text-slate-500 uppercase">{s.type}</div>
+        </div>
+      )
+    },
+    {
+      header: 'Method',
+      accessor: (s) => (
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase border ${
+          s.method === 'Salary' 
+            ? 'bg-slate-800 text-blue-400 border-blue-500/30' 
+            : 'bg-slate-800 text-green-400 border-green-500/30'
+        }`}>
+          {s.method}
+        </span>
+      ),
+      className: 'w-24'
+    },
+    {
+      header: 'Premium',
+      accessor: (s) => (
+        <div>
+          <div className="font-bold text-green-500 text-xs">R {s.premium.toLocaleString()}</div>
+          <div className="text-[10px] text-slate-500 uppercase">Ref: {s.salaryRefNo}</div>
+        </div>
+      )
+    },
+    {
+      header: 'Advisors',
+      accessor: (s) => (
+        <div className="flex flex-wrap gap-1">
+          {s.advisors.map(a => (
+            <span key={a.id} title={a.code} className="inline-flex items-center gap-0.5 bg-slate-900/50 border border-slate-700 text-[9px] text-slate-300 px-1.5 py-0.5 rounded">
+              {a.name.split(' ')[0]}
+            </span>
+          ))}
+        </div>
+      )
+    },
+    {
+      header: 'Documents',
+      accessor: (s) => (
+        s.documents && s.documents.length > 0 ? (
+          <div className="flex flex-col gap-1 max-h-24 overflow-y-auto pr-2 custom-scrollbar">
+            {[...s.documents].sort((a, b) => new Date(b.dateModified).getTime() - new Date(a.dateModified).getTime()).map(doc => (
+              <a 
+                key={doc.id}
+                href={doc.fileUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 transition-colors py-0.5 group"
+                title={`Modified: ${new Date(doc.dateModified).toLocaleString()}`}
+              >
+                <div className="bg-blue-500/10 p-1 rounded group-hover:bg-blue-500/20">
+                  <FilePlus className="w-3 h-3" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold truncate max-w-[120px] leading-tight" title={doc.fileName}>{doc.fileName}</span>
+                  <span className="text-[8px] text-slate-500 leading-tight">{new Date(doc.dateModified).toLocaleDateString()}</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-slate-600">
+             <div className="bg-slate-800 p-1 rounded">
+               <FilePlus className="w-3 h-3 opacity-20" />
+             </div>
+             <span className="text-[10px] italic">Pending Scan</span>
+          </div>
+        )
+      ),
+      className: 'w-40'
+    }
+  ];
+
+  const actions = [
+    {
+      icon: <Upload className="w-4 h-4" />,
+      label: 'Upload Scan',
+      onClick: (s: Submission) => {
+        setUploadingDocId(s.id);
+        fileInputRef.current?.click();
+      },
+      className: 'text-green-400 hover:bg-green-400/10'
+    },
+    {
+      icon: <DollarSign className="w-4 h-4" />,
+      label: 'Pay',
+      onClick: (s: Submission) => {
+        setSelectedSubmission(s);
+        setShowPaymentModal(true);
+      },
+      className: 'text-blue-400 hover:bg-blue-400/10'
+    },
+    {
+      icon: <AlertTriangle className="w-4 h-4" />,
+      label: 'Lapse',
+      onClick: (s: Submission) => {
+        setSubmissionToLapse(s);
+        setShowLapseModal(true);
+      },
+      className: 'text-red-400 hover:bg-red-400/10'
+    }
+  ];
+
   return (
     <div className="space-y-8">
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        className="hidden" 
+        accept="application/pdf,image/*"
+      />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">Policy Submissions</h1>
@@ -147,43 +382,79 @@ const SubmissionsPage: React.FC = () => {
           <h2 className="text-xl font-bold text-white mb-6">Create New Submission</h2>
           <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             
-            <div className="md:col-span-2 lg:col-span-3 space-y-4 bg-slate-900/50 p-6 rounded-2xl border border-slate-700/50 mb-2">
-              <label className="text-sm font-bold text-blue-400 uppercase tracking-wider">Submission Type</label>
-              <div className="flex gap-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setValue('type', SubmissionType.Individual);
-                    setValue('advisorIds', []);
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                    submissionType === SubmissionType.Individual
-                      ? 'bg-blue-600/10 border-blue-500 text-white shadow-lg shadow-blue-500/10'
-                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
-                  }`}
-                >
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${submissionType === SubmissionType.Individual ? 'border-white' : 'border-slate-700'}`}>
-                    {submissionType === SubmissionType.Individual && <div className="w-2 h-2 bg-white rounded-full" />}
-                  </div>
-                  <span className="font-bold">Individual</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setValue('type', SubmissionType.Group);
-                    setValue('advisorIds', []);
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                    submissionType === SubmissionType.Group
-                      ? 'bg-blue-600/10 border-blue-500 text-white shadow-lg shadow-blue-500/10'
-                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
-                  }`}
-                >
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${submissionType === SubmissionType.Group ? 'border-white' : 'border-slate-700'}`}>
-                    {submissionType === SubmissionType.Group && <div className="w-2 h-2 bg-white rounded-full" />}
-                  </div>
-                  <span className="font-bold">Group (Joint)</span>
-                </button>
+            <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-900/50 p-6 rounded-2xl border border-slate-700/50 mb-2">
+              <div className="space-y-4">
+                <label className="text-sm font-bold text-blue-400 uppercase tracking-wider">Submission Type</label>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setValue('type', SubmissionType.Individual);
+                      setValue('advisorIds', []);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      submissionType === SubmissionType.Individual
+                        ? 'bg-blue-600/10 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${submissionType === SubmissionType.Individual ? 'border-white' : 'border-slate-700'}`}>
+                      {submissionType === SubmissionType.Individual && <div className="w-2 h-2 bg-white rounded-full" />}
+                    </div>
+                    <span className="font-bold">Individual</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setValue('type', SubmissionType.Group);
+                      setValue('advisorIds', []);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      submissionType === SubmissionType.Group
+                        ? 'bg-blue-600/10 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${submissionType === SubmissionType.Group ? 'border-white' : 'border-slate-700'}`}>
+                      {submissionType === SubmissionType.Group && <div className="w-2 h-2 bg-white rounded-full" />}
+                    </div>
+                    <span className="font-bold">Group (Joint)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="text-sm font-bold text-green-400 uppercase tracking-wider">Payment Method</label>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setValue('method', PaymentMethod.Salary)}
+                    className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      paymentMethod === PaymentMethod.Salary
+                        ? 'bg-green-600/10 border-green-500 text-white shadow-lg shadow-green-500/10'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${paymentMethod === PaymentMethod.Salary ? 'border-white' : 'border-slate-700'}`}>
+                      {paymentMethod === PaymentMethod.Salary && <div className="w-2 h-2 bg-white rounded-full" />}
+                    </div>
+                    <span className="font-bold">Salary</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setValue('method', PaymentMethod.BankDebit)}
+                    className={`flex-1 flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      paymentMethod === PaymentMethod.BankDebit
+                        ? 'bg-green-600/10 border-green-500 text-white shadow-lg shadow-green-500/10'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${paymentMethod === PaymentMethod.BankDebit ? 'border-white' : 'border-slate-700'}`}>
+                      {paymentMethod === PaymentMethod.BankDebit && <div className="w-2 h-2 bg-white rounded-full" />}
+                    </div>
+                    <span className="font-bold">Bank Debit</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -229,7 +500,7 @@ const SubmissionsPage: React.FC = () => {
               {errors.date && <p className="text-red-500 text-xs">{errors.date.message}</p>}
             </div>
 
-            <div className="md:col-span-2 lg:col-span-2 space-y-2">
+            <div className="md:col-span-2 lg:col-span-1 space-y-2">
               <label className="text-sm font-semibold text-slate-300">
                 {submissionType === SubmissionType.Individual ? 'Select Advisor' : 'Select Advisors (Joint Policy)'}
               </label>
@@ -304,6 +575,49 @@ const SubmissionsPage: React.FC = () => {
               {errors.advisorIds && <p className="text-red-500 text-xs">{errors.advisorIds.message}</p>}
             </div>
 
+            <div className="md:col-span-2 lg:col-span-1 space-y-2">
+              <label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                Scan Application Form
+              </label>
+              <div className="relative group">
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setValue('applicationForm', file, { shouldValidate: true });
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+                <div className={`w-full bg-slate-900 border-2 border-dashed rounded-xl px-4 py-3 text-white flex items-center gap-3 transition-all ${
+                  selectedFile ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700 hover:border-slate-600'
+                }`}>
+                  <div className={`p-2 rounded-lg ${selectedFile ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <div className="flex flex-col overflow-hidden">
+                    <span className={`text-sm font-medium truncate ${selectedFile ? 'text-blue-400' : 'text-slate-500'}`}>
+                      {selectedFile ? selectedFile.name : 'Upload scanned form...'}
+                    </span>
+                    <span className="text-[10px] text-slate-600">PDF or Image up to 10MB</span>
+                  </div>
+                  {selectedFile && (
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setValue('applicationForm', undefined);
+                      }}
+                      className="ml-auto p-1 hover:bg-slate-800 rounded-md text-slate-500 hover:text-white z-20"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {errors.applicationForm && <p className="text-red-500 text-xs">{errors.applicationForm.message as string}</p>}
+            </div>
+
             <div className="md:col-span-2 lg:col-span-3 pt-4">
               <button
                 type="submit"
@@ -319,84 +633,139 @@ const SubmissionsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center bg-slate-800/20 p-4 rounded-2xl border border-slate-700/30">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
-          <input placeholder="Search applicants..." className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-white outline-none focus:ring-2 focus:ring-blue-500/50" />
-        </div>
-        <button className="flex items-center gap-2 bg-slate-800 text-slate-300 px-6 py-3 rounded-xl hover:bg-slate-700 transition-colors border border-slate-700">
-          <Filter className="w-4 h-4" />
-          Filter
-        </button>
-      </div>
+      <DataTable
+        data={submissions}
+        columns={columns}
+        actions={actions}
+        loading={loading}
+        searchPlaceholder="Search applicants, ID numbers, or references..."
+      />
 
-      {/* Submissions Table */}
-      <div className="bg-slate-800/40 border border-slate-700/50 rounded-3xl overflow-hidden shadow-xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-900/50 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                <th className="px-6 py-5">ID</th>
-                <th className="px-6 py-5">Type</th>
-                <th className="px-6 py-5">Applicant Details</th>
-                <th className="px-6 py-5">ID Number</th>
-                <th className="px-6 py-5">Premium</th>
-                <th className="px-6 py-5">Contact</th>
-                <th className="px-6 py-5">Advisors</th>
-                <th className="px-6 py-5">Date Submitted</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-700/50">
-              {loading ? (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">Fetching submissions...</td></tr>
-              ) : submissions.length === 0 ? (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">No submissions found.</td></tr>
-              ) : (
-                submissions.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-700/20 transition-colors group">
-                    <td className="px-6 py-5">
-                      <span className="text-slate-500 text-xs font-mono">#{s.id}</span>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-tighter ${
-                        s.type === 'Group' 
-                          ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' 
-                          : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                      }`}>
-                        {s.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="font-bold text-white">{s.applicantSurname}, {s.initials}</div>
-                      <div className="text-xs text-slate-500 mt-1 uppercase">Ref: {s.salaryRefNo}</div>
-                    </td>
-                    <td className="px-6 py-5 text-slate-300 font-mono text-sm">{s.idNumber}</td>
-                    <td className="px-6 py-5">
-                      <div className="font-bold text-green-500">R {s.premium.toLocaleString()}</div>
-                    </td>
-                    <td className="px-6 py-5 text-slate-400 text-sm">{s.applicantPhoneNumber}</td>
-                    <td className="px-6 py-5">
-                      <div className="flex flex-wrap gap-1">
-                        {s.advisors.map(a => (
-                          <span key={a.id} className="inline-flex items-center gap-1 bg-slate-900/50 border border-slate-700 text-[10px] text-slate-300 px-2 py-1 rounded-md">
-                            <Users className="w-3 h-3" />
-                            {a.name}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-5 text-sm text-slate-400">
-                      {new Date(s.createdAt).toLocaleDateString()}
-                      <div className="text-[10px] opacity-50">{new Date(s.createdAt).toLocaleTimeString()}</div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {/* Payment Modal */}
+      {showPaymentModal && selectedSubmission && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-white">Record Payment</h3>
+                <p className="text-slate-400 text-sm">Insurer payout for {selectedSubmission.applicantSurname}</p>
+              </div>
+              <button 
+                onClick={() => setShowPaymentModal(false)}
+                className="text-slate-500 hover:text-white transition-colors p-2"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div className="bg-blue-600/10 border border-blue-500/30 p-4 rounded-2xl">
+                <div className="flex items-center justify-between text-xs font-bold text-blue-400 uppercase tracking-widest mb-1">
+                  <span>Policy ID</span>
+                  <span>Method</span>
+                </div>
+                <div className="flex items-center justify-between text-white font-bold">
+                  <span>#{selectedSubmission.id}</span>
+                  <span className="bg-blue-600 px-2 py-0.5 rounded text-[10px]">{selectedSubmission.method}</span>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-green-500" />
+                    Amount Received from Insurer (R)
+                  </label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-4 text-white text-lg font-bold focus:ring-2 focus:ring-blue-500/50 outline-none placeholder:text-slate-600" 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                    <Hash className="w-4 h-4 text-blue-500" />
+                    Payment Reference
+                  </label>
+                  <input 
+                    type="text" 
+                    value={paymentRef}
+                    onChange={(e) => setPaymentRef(e.target.value)}
+                    placeholder="e.g. INV-2024-001"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-4 text-white focus:ring-2 focus:ring-blue-500/50 outline-none placeholder:text-slate-600" 
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-slate-500 p-2 bg-slate-800/50 rounded-lg">
+                  <Calendar className="w-3 h-3" />
+                  Payment date will be recorded as today.
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-800/30 border-t border-slate-800">
+              <button
+                onClick={handleRecordPayment}
+                disabled={recordingPayment || !paymentAmount}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-bold py-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                {recordingPayment ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Confirm Payment & Calculate Commission'}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Lapse Modal */}
+      {showLapseModal && submissionToLapse && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-white">Lapse Policy</h3>
+                <p className="text-slate-400 text-sm">Policy for {submissionToLapse.applicantSurname}</p>
+              </div>
+              <button 
+                onClick={() => setShowLapseModal(false)}
+                className="text-slate-500 hover:text-white transition-colors p-2"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6 text-center">
+              <div className="bg-red-600/10 border border-red-500/30 p-6 rounded-2xl flex flex-col items-center">
+                <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
+                <p className="text-white font-bold mb-2 text-lg">Are you sure?</p>
+                <p className="text-slate-400 text-sm leading-relaxed">
+                  Lapsing this policy will mark it as inactive. <br/>
+                  <span className="text-red-400 font-bold">ALL commissions paid so far will be clawed back</span> from the assigned advisors.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-800/30 border-t border-slate-800 flex gap-4">
+              <button
+                onClick={() => setShowLapseModal(false)}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLapseSubmission}
+                disabled={lapsing}
+                className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-red-600/50 text-white font-bold py-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                {lapsing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Lapse & Clawback'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

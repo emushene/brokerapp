@@ -10,7 +10,10 @@ public class SubmissionResponseDto
     public string SalaryRefNo { get; set; } = string.Empty;
     public string ApplicantPhoneNumber { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
+    public string Method { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
     public DateTime Date { get; set; }
     public List<AdvisorDto> Advisors { get; set; } = new List<AdvisorDto>();
+    public List<SubmissionDocumentDto> Documents { get; set; } = new List<SubmissionDocumentDto>();
     public DateTime CreatedAt { get; set; }
 }

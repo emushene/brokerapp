@@ -23,6 +23,7 @@ public class SubmissionRepository : ISubmissionRepository
     {
         return await _context.Submissions
             .Include(s => s.Advisors)
+            .Include(s => s.Documents)
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync();
     }
@@ -31,7 +32,18 @@ public class SubmissionRepository : ISubmissionRepository
     {
         return await _context.Submissions
             .Include(s => s.Advisors)
+            .Include(s => s.Documents)
             .Where(s => s.Advisors.Any(a => a.FirebaseId == firebaseId))
+            .OrderByDescending(s => s.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Submission>> GetByInternalAdvisorIdAsync(int advisorId)
+    {
+        return await _context.Submissions
+            .Include(s => s.Advisors)
+            .Include(s => s.Documents)
+            .Where(s => s.Advisors.Any(a => a.Id == advisorId))
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync();
     }
@@ -47,6 +59,14 @@ public class SubmissionRepository : ISubmissionRepository
     {
         return await _context.Advisors
             .FirstOrDefaultAsync(a => a.FirebaseId == firebaseId);
+    }
+
+    public async Task<Submission?> GetByIdAsync(int id)
+    {
+        return await _context.Submissions
+            .Include(s => s.Advisors)
+            .Include(s => s.Documents)
+            .FirstOrDefaultAsync(s => s.Id == id);
     }
 
     public async Task SaveChangesAsync()

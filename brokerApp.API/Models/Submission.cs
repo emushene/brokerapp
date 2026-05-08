@@ -18,9 +18,15 @@ public class Submission
 
     public SubmissionType Type { get; set; }
 
+    public PaymentMethod Method { get; set; } = PaymentMethod.Salary;
+
+    public SubmissionStatus Status { get; set; } = SubmissionStatus.Submitted;
+
     public DateTime Date { get; set; }
 
     public ICollection<Advisor> Advisors { get; set; } = new List<Advisor>();
+
+    public ICollection<SubmissionDocument> Documents { get; set; } = new List<SubmissionDocument>();
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

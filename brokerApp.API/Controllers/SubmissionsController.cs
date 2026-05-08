@@ -18,7 +18,7 @@ public class SubmissionsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<SubmissionResponseDto>> Create(SubmissionCreateDto request)
+    public async Task<ActionResult<SubmissionResponseDto>> Create([FromForm] SubmissionCreateDto request)
     {
         try
         {
@@ -45,10 +45,31 @@ public class SubmissionsController : ControllerBase
         }
     }
 
+    [HttpGet("advisor/{advisorId}")]
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisorId(int advisorId)
+    {
+        var submissions = await _submissionService.GetSubmissionsByAdvisorIdAsync(advisorId);
+        return Ok(submissions);
+    }
+
     [HttpGet("all")]
     public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetAll()
     {
         var submissions = await _submissionService.GetAllSubmissionsAsync();
         return Ok(submissions);
+    }
+
+    [HttpPost("{id}/documents")]
+    public async Task<ActionResult<SubmissionResponseDto>> UploadDocument(int id, IFormFile file)
+    {
+        try
+        {
+            var response = await _submissionService.UploadDocumentAsync(id, file);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 }

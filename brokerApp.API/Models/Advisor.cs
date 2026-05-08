@@ -6,6 +6,7 @@ public class Advisor
     public string FirebaseId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
 
     public ICollection<Submission> Submissions { get; set; } = new List<Submission>();
 }
