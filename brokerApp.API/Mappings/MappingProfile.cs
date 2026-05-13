@@ -34,6 +34,10 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.ApplicantInitials, opt => opt.MapFrom(src => src.Submission.Initials))
             .ForMember(dest => dest.IsPaid, opt => opt.MapFrom(src => src.IsPaid))
             .ForMember(dest => dest.DatePaid, opt => opt.MapFrom(src => src.DatePaid))
-            .ForMember(dest => dest.PayoutReference, opt => opt.MapFrom(src => src.PayoutReference));
+            .ForMember(dest => dest.PayoutReference, opt => opt.MapFrom(src => src.PayoutReference))
+            .ForMember(dest => dest.FileUrl, opt => opt.MapFrom(src => 
+                src.Submission != null && src.Submission.Documents.Any() 
+                ? src.Submission.Documents.OrderByDescending(d => d.DateModified).First().FileUrl 
+                : null));
     }
 }

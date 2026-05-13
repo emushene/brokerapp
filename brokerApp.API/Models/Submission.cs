@@ -10,6 +10,8 @@ public class Submission
 
     public string IdNumber { get; set; } = string.Empty;
 
+    public string PolicyNumber { get; set; } = string.Empty;
+
     public decimal Premium { get; set; }
 
     public string SalaryRefNo { get; set; } = string.Empty;

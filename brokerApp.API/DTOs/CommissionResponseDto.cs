@@ -16,4 +16,5 @@ public class CommissionResponseDto
     public bool IsPaid { get; set; }
     public DateTime? DatePaid { get; set; }
     public string? PayoutReference { get; set; }
+    public string? FileUrl { get; set; }
 }

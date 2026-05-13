@@ -87,7 +87,8 @@ public class FinancialsService : IFinancialsService
     {
         var query = _context.AdvisorCommissions
             .Include(c => c.PolicyPayment)
-                .ThenInclude(p => p.Submission)
+            .Include(c => c.Submission)
+                .ThenInclude(s => s.Documents)
             .Include(c => c.Advisor)
             .AsQueryable();
 

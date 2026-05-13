@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +18,11 @@ var firebaseProjectId = builder.Configuration["Firebase:ProjectId"];
 // --------------------
 
 // Controllers support
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
 
 // FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
@@ -33,6 +38,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ISubmissionRepository, SubmissionRepository>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<IFinancialsService, FinancialsService>();
+builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<IFileStorageService, GoogleCloudStorageService>();
 
 // --------------------

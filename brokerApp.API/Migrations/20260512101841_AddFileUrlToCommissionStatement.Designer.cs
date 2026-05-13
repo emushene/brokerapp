@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using brokerApp.API.Data;
@@ -11,9 +12,11 @@ using brokerApp.API.Data;
 namespace brokerApp.API.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260512101841_AddFileUrlToCommissionStatement")]
+    partial class AddFileUrlToCommissionStatement
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -155,10 +158,6 @@ namespace brokerApp.API.Migrations
                     b.Property<string>("AdvisorName")
                         .HasColumnType("text");
 
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("ClientName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -168,12 +167,6 @@ namespace brokerApp.API.Migrations
 
                     b.Property<DateTime?>("EffectiveDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FileUrl")
-                        .HasColumnType("text");
-
-                    b.Property<string>("GoogleDriveLink")
-                        .HasColumnType("text");
 
                     b.Property<int?>("MatchedSubmissionId")
                         .HasColumnType("integer");
@@ -240,10 +233,6 @@ namespace brokerApp.API.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
 
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("ClientName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -259,21 +248,12 @@ namespace brokerApp.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("FileUrl")
-                        .HasColumnType("text");
-
-                    b.Property<string>("GoogleDriveLink")
-                        .HasColumnType("text");
-
                     b.Property<int?>("MatchedSubmissionId")
                         .HasColumnType("integer");
 
                     b.Property<string>("PolicyNumber")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<decimal>("Premium")
-                        .HasColumnType("numeric");
 
                     b.HasKey("Id");
 

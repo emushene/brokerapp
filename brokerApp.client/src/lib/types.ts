@@ -90,4 +90,49 @@ export interface Commission {
   isPaid: boolean;
   datePaid?: string;
   payoutReference?: string;
+  fileUrl?: string;
+}
+
+export interface StatementItem {
+  id: number;
+  clientName: string;
+  policyNumber: string;
+  commissionType: string;
+  commissionSubType: string;
+  amount: number;
+  premium: number;
+  category?: string;
+  matchedSubmissionId?: number;
+  advisorName?: string;
+  fileUrl?: string;
+  googleDriveLink?: string;
+  isMatched: boolean;
+}
+
+export interface MovementItem {
+  id: number;
+  policyNumber: string;
+  clientName: string;
+  movementType: string;
+  effectiveDate?: string;
+  premium: number;
+  category?: string;
+  matchedSubmissionId?: number;
+  advisorName?: string;
+  fileUrl?: string;
+  googleDriveLink?: string;
+  isMatched: boolean;
+}
+
+export interface CommissionStatement {
+  id: number;
+  fileName: string;
+  fileUrl?: string;
+  statementDate: string;
+  uploadDate: string;
+  totalCommission: number;
+  totalRows: number;
+  matchedRows: number;
+  items: StatementItem[];
+  movementItems: MovementItem[];
 }

@@ -89,6 +89,25 @@ export const financialsApi = {
   handleLapse: async (submissionId: number) => {
     await api.post(`/Financials/submissions/${submissionId}/lapse`);
   },
+  importStatement: async (file: File, statementDate: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('statementDate', statementDate);
+    const response = await api.post<CommissionStatement>('/Financials/import-statement', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+  getStatements: async () => {
+    const response = await api.get<CommissionStatement[]>('/Financials/statements');
+    return response.data;
+  },
+  getStatementDetails: async (id: number) => {
+    const response = await api.get<CommissionStatement>(`/Financials/statements/${id}`);
+    return response.data;
+  },
 };
 
 export default api;
