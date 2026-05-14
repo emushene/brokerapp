@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace brokerApp.API.Services;
 
@@ -10,12 +12,13 @@ public class GoogleDriveSyncWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<GoogleDriveSyncWorker> _logger;
-    private readonly TimeSpan _interval = TimeSpan.FromHours(6); // 4 times a day
+    private readonly IConfiguration _configuration;
 
-    public GoogleDriveSyncWorker(IServiceProvider serviceProvider, ILogger<GoogleDriveSyncWorker> logger)
+    public GoogleDriveSyncWorker(IServiceProvider serviceProvider, ILogger<GoogleDriveSyncWorker> logger, IConfiguration configuration)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _configuration = configuration;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -27,6 +30,9 @@ public class GoogleDriveSyncWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var intervalMinutes = _configuration.GetValue<int>("GoogleDrive:SyncIntervalMinutes", 30);
+            var interval = TimeSpan.FromMinutes(intervalMinutes);
+
             try
             {
                 using (var scope = _serviceProvider.CreateScope())
@@ -40,8 +46,8 @@ public class GoogleDriveSyncWorker : BackgroundService
                 _logger.LogError(ex, "An error occurred while running the Google Drive sync.");
             }
 
-            _logger.LogInformation("Sync Worker sleeping for {Interval}...", _interval);
-            await Task.Delay(_interval, stoppingToken);
+            _logger.LogInformation("Sync Worker sleeping for {Interval}...", interval);
+            await Task.Delay(interval, stoppingToken);
         }
     }
 }

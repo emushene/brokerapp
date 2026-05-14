@@ -40,6 +40,8 @@ builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<IFinancialsService, FinancialsService>();
 builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<IFileStorageService, GoogleCloudStorageService>();
+builder.Services.AddScoped<IGoogleDriveSyncService, GoogleDriveSyncService>();
+builder.Services.AddHostedService<GoogleDriveSyncWorker>();
 
 // --------------------
 // FIREBASE AUTH FIXED

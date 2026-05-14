@@ -2,12 +2,23 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { FilePlus, Loader2, CheckCircle2, Check, ChevronDown, X, DollarSign, Calendar, Hash, Search, Upload, AlertTriangle } from 'lucide-react';
+import { FilePlus, Loader2, CheckCircle2, Check, ChevronDown, X, DollarSign, Calendar, Hash, Search, Upload, AlertTriangle, ExternalLink, FileText } from 'lucide-react';
 import { submissionsApi, advisorsApi, financialsApi } from './lib/api';
 import { SubmissionType, PaymentMethod, SubmissionStatus } from './lib/types';
 import type { Submission, Advisor } from './lib/types';
 import { DataTable } from './components/DataTable';
 import type { Column } from './components/DataTable';
+
+const getEmbedUrl = (url: string | null | undefined) => {
+  if (!url) return '';
+  if (url.includes('drive.google.com')) {
+    const match = url.match(/\/d\/([^/]+)/) || url.match(/id=([^&]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/file/d/${match[1]}/preview`;
+    }
+  }
+  return url;
+};
 
 // Validation Schema matching Backend
 const submissionSchema = z.object({
@@ -45,6 +56,10 @@ const SubmissionsPage: React.FC = () => {
   const [showLapseModal, setShowLapseModal] = useState(false);
   const [submissionToLapse, setSubmissionToLapse] = useState<Submission | null>(null);
   const [lapsing, setLapsing] = useState(false);
+
+  // PDF Modal State
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [selectedPdfUrl, setSelectedPdfUrl] = useState<string | null>(null);
 
   // Document Upload State
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,6 +121,13 @@ const SubmissionsPage: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const openPdfViewer = (e: React.MouseEvent, url: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedPdfUrl(url);
+    setShowPdfModal(true);
+  };
 
   const onSubmit = async (data: SubmissionFormValues) => {
     setSubmitting(true);
@@ -229,6 +251,7 @@ const SubmissionsPage: React.FC = () => {
           {s.status}
         </span>
       ),
+      sortAccessor: (s) => s.status,
       className: 'w-24'
     },
     {
@@ -238,7 +261,8 @@ const SubmissionsPage: React.FC = () => {
           <div className="font-bold text-white">{s.applicantSurname}, {s.initials}</div>
           <div className="text-[10px] text-slate-500">{s.applicantPhoneNumber}</div>
         </div>
-      )
+      ),
+      sortAccessor: (s) => `${s.applicantSurname} ${s.initials} ${s.applicantPhoneNumber}`
     },
     {
       header: 'ID & Type',
@@ -247,7 +271,8 @@ const SubmissionsPage: React.FC = () => {
           <div className="text-slate-300 font-mono text-xs">{s.idNumber}</div>
           <div className="text-[10px] text-slate-500 uppercase">{s.type}</div>
         </div>
-      )
+      ),
+      sortAccessor: (s) => `${s.idNumber} ${s.type}`
     },
     {
       header: 'Method',
@@ -260,6 +285,7 @@ const SubmissionsPage: React.FC = () => {
           {s.method}
         </span>
       ),
+      sortAccessor: (s) => s.method,
       className: 'w-24'
     },
     {
@@ -269,7 +295,8 @@ const SubmissionsPage: React.FC = () => {
           <div className="font-bold text-green-500 text-xs">R {s.premium.toLocaleString()}</div>
           <div className="text-[10px] text-slate-500 uppercase">Ref: {s.salaryRefNo}</div>
         </div>
-      )
+      ),
+      sortAccessor: (s) => `${s.premium} ${s.salaryRefNo}`
     },
     {
       header: 'Advisors',
@@ -281,7 +308,8 @@ const SubmissionsPage: React.FC = () => {
             </span>
           ))}
         </div>
-      )
+      ),
+      sortAccessor: (s) => s.advisors.map(a => `${a.name} ${a.code}`).join(' ')
     },
     {
       header: 'Documents',
@@ -292,13 +320,14 @@ const SubmissionsPage: React.FC = () => {
               <a 
                 key={doc.id}
                 href={doc.fileUrl} 
+                onClick={(e) => openPdfViewer(e, doc.fileUrl)}
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 transition-colors py-0.5 group"
                 title={`Modified: ${new Date(doc.dateModified).toLocaleString()}`}
               >
                 <div className="bg-blue-500/10 p-1 rounded group-hover:bg-blue-500/20">
-                  <FilePlus className="w-3 h-3" />
+                  <FileText className="w-3 h-3" />
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[9px] font-bold truncate max-w-[120px] leading-tight" title={doc.fileName}>{doc.fileName}</span>
@@ -316,6 +345,7 @@ const SubmissionsPage: React.FC = () => {
           </div>
         )
       ),
+      sortAccessor: (s) => s.documents?.length || 0,
       className: 'w-40'
     }
   ];
@@ -762,6 +792,56 @@ const SubmissionsPage: React.FC = () => {
               >
                 {lapsing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Lapse & Clawback'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPdfModal && selectedPdfUrl && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/10 rounded-xl">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="font-black text-white text-sm">Document Viewer</h3>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Application Form / Scan</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <a 
+                  href={selectedPdfUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400 hover:text-white"
+                  title="Open in New Tab"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+                <button 
+                  onClick={() => setShowPdfModal(false)}
+                  className="p-2 hover:bg-red-500/10 rounded-xl transition-colors text-slate-400 hover:text-red-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-slate-950 relative">
+               <iframe 
+                 src={getEmbedUrl(selectedPdfUrl)} 
+                 className="w-full h-full border-none"
+                 title="PDF Viewer"
+               />
+            </div>
+            <div className="p-3 bg-slate-900/50 border-t border-slate-800 flex justify-center">
+               <button 
+                 onClick={() => setShowPdfModal(false)}
+                 className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-xl transition-all"
+               >
+                 Close Viewer
+               </button>
             </div>
           </div>
         </div>

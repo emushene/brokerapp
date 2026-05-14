@@ -5,6 +5,17 @@ import type { Commission, CommissionStatement, StatementItem, MovementItem } fro
 import { DataTable } from './components/DataTable';
 import type { Column } from './components/DataTable';
 
+const getEmbedUrl = (url: string | null | undefined) => {
+  if (!url) return '';
+  if (url.includes('drive.google.com')) {
+    const match = url.match(/\/d\/([^/]+)/) || url.match(/id=([^&]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/file/d/${match[1]}/preview`;
+    }
+  }
+  return url;
+};
+
 const CategoryBadge: React.FC<{ category: string }> = ({ category }) => {
   const cat = category?.toLowerCase() || 'unknown';
   if (cat.includes('lapse')) {
@@ -526,7 +537,7 @@ const FinancialsPage: React.FC = () => {
             </div>
             <div className="flex-1 bg-slate-950 relative">
                <iframe 
-                 src={selectedPdfUrl} 
+                 src={getEmbedUrl(selectedPdfUrl)} 
                  className="w-full h-full border-none"
                  title="PDF Viewer"
                />
@@ -538,6 +549,8 @@ const FinancialsPage: React.FC = () => {
                >
                  Close Viewer
                </button>
+
+
             </div>
           </div>
         </div>

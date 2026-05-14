@@ -43,12 +43,26 @@ export function DataTable<T extends { id: string | number }>({
   const searchedData = useMemo(() => {
     if (!searchTerm) return data;
     const lowerSearch = searchTerm.toLowerCase();
+    
     return data.filter((item) => {
-      return Object.values(item).some((val) => 
-        String(val).toLowerCase().includes(lowerSearch)
+      // 1. Search in raw object values (original behavior)
+      const matchesRaw = Object.values(item).some((val) => 
+        val !== null && val !== undefined && String(val).toLowerCase().includes(lowerSearch)
       );
+      if (matchesRaw) return true;
+
+      // 2. Search in sortAccessor results (new behavior - enables searching calculated fields)
+      const matchesCalculated = columns.some((col) => {
+        if (col.sortAccessor) {
+          const val = col.sortAccessor(item);
+          return val !== null && val !== undefined && String(val).toLowerCase().includes(lowerSearch);
+        }
+        return false;
+      });
+      
+      return matchesCalculated;
     });
-  }, [data, searchTerm]);
+  }, [data, searchTerm, columns]);
 
   // Sort logic
   const sortedData = useMemo(() => {

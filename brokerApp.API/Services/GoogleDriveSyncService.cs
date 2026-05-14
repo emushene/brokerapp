@@ -35,17 +35,17 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         var keyFilePath = _configuration["GoogleDrive:KeyFilePath"] ?? "broker-app-key.json";
-        var rootFolderId = _configuration["GoogleDrive:RootFolderId"] ?? "";
+        var rootFolderIds = _configuration.GetSection("GoogleDrive:RootFolderIds").Get<string[]>();
 
-        if (string.IsNullOrEmpty(rootFolderId))
+        if (rootFolderIds == null || rootFolderIds.Length == 0)
         {
-            _logger.LogWarning("GoogleDrive:RootFolderId is not configured. Skipping sync.");
+            _logger.LogWarning("GoogleDrive:RootFolderIds is not configured or empty. Skipping sync.");
             return;
         }
 
         try
         {
-            _logger.LogInformation("Starting Google Drive synchronization...");
+            _logger.LogInformation("Starting Google Drive synchronization for {Count} root folders...", rootFolderIds.Length);
             
             GoogleCredential credential;
             using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
@@ -62,91 +62,127 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
 
             var allAdvisors = await dbContext.Advisors.ToListAsync();
 
-            var folderListRequest = service.Files.List();
-            folderListRequest.Q = $"'{rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
-            folderListRequest.SupportsAllDrives = true;
-            folderListRequest.IncludeItemsFromAllDrives = true;
-            folderListRequest.Fields = "files(id, name)";
-            
-            var foldersResult = await folderListRequest.ExecuteAsync();
-
-            foreach (var folder in foldersResult.Files)
+            foreach (var rootFolderId in rootFolderIds)
             {
-                if (folder.Name.StartsWith("Test_Connection_")) continue;
+                _logger.LogInformation("Processing root folder: {RootFolderId}", rootFolderId);
 
-                var advisor = allAdvisors.FirstOrDefault(a => a.Name.Equals(folder.Name, StringComparison.OrdinalIgnoreCase));
-                
-                if (advisor == null)
+                try
                 {
-                    _logger.LogInformation("Advisor '{FolderName}' not found. Creating...", folder.Name);
-                    advisor = new Advisor 
-                    { 
-                        Name = folder.Name, 
-                        Code = "AUTO", 
-                        FirebaseId = "imported_" + folder.Name.Replace(" ", "_") 
-                    };
-                    dbContext.Advisors.Add(advisor);
-                    await dbContext.SaveChangesAsync();
-                    allAdvisors.Add(advisor);
+                    var folders = new List<Google.Apis.Drive.v3.Data.File>();
+                    string? pageToken = null;
+                    do
+                    {
+                        var folderListRequest = service.Files.List();
+                        folderListRequest.Q = $"'{rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+                        folderListRequest.SupportsAllDrives = true;
+                        folderListRequest.IncludeItemsFromAllDrives = true;
+                        folderListRequest.Fields = "nextPageToken, files(id, name)";
+                        folderListRequest.PageToken = pageToken;
+                        
+                        var result = await folderListRequest.ExecuteAsync();
+                        folders.AddRange(result.Files);
+                        pageToken = result.NextPageToken;
+                    } while (pageToken != null);
+
+                    _logger.LogInformation("Found {Count} advisor folders in root {RootId}", folders.Count, rootFolderId);
+
+                    foreach (var folder in folders)
+                    {
+                        if (folder.Name.StartsWith("Test_Connection_")) continue;
+
+                        var advisor = allAdvisors.FirstOrDefault(a => a.Name.Equals(folder.Name, StringComparison.OrdinalIgnoreCase));
+                        
+                        if (advisor == null)
+                        {
+                            _logger.LogInformation("Advisor '{FolderName}' not found. Creating...", folder.Name);
+                            advisor = new Advisor 
+                            { 
+                                Name = folder.Name, 
+                                Code = "AUTO", 
+                                FirebaseId = "imported_" + Guid.NewGuid().ToString("N").Substring(0, 8) 
+                            };
+                            dbContext.Advisors.Add(advisor);
+                            await dbContext.SaveChangesAsync();
+                            allAdvisors.Add(advisor);
+                        }
+
+                        _logger.LogInformation("Syncing files for Advisor: {AdvisorName} ({FolderId})", advisor.Name, folder.Id);
+
+                        var files = new List<Google.Apis.Drive.v3.Data.File>();
+                        string? filePageToken = null;
+                        do
+                        {
+                            var fileListRequest = service.Files.List();
+                            fileListRequest.Q = $"'{folder.Id}' in parents and mimeType = 'application/pdf' and trashed = false";
+                            fileListRequest.SupportsAllDrives = true;
+                            fileListRequest.IncludeItemsFromAllDrives = true;
+                            fileListRequest.Fields = "nextPageToken, files(id, name, webViewLink, modifiedTime)";
+                            fileListRequest.PageToken = filePageToken;
+                            
+                            var result = await fileListRequest.ExecuteAsync();
+                            files.AddRange(result.Files);
+                            filePageToken = result.NextPageToken;
+                        } while (filePageToken != null);
+
+                        foreach (var file in files)
+                        {
+                            var (idNum, surname, initial) = ParseFileName(file.Name);
+                            
+                            if (string.IsNullOrEmpty(idNum)) 
+                            {
+                                _logger.LogDebug("Skipping file {FileName} - name pattern mismatch", file.Name);
+                                continue;
+                            }
+
+                            var existingSubmission = await dbContext.Submissions
+                                .Include(s => s.Advisors)
+                                .Include(s => s.Documents)
+                                .FirstOrDefaultAsync(s => s.IdNumber == idNum && s.Advisors.Any(a => a.Id == advisor.Id));
+
+                            if (existingSubmission == null)
+                            {
+                                _logger.LogInformation("Creating new submission for {IdNum} {Surname} under {Advisor}", idNum, surname, advisor.Name);
+                                var newSubmission = new Submission
+                                {
+                                    IdNumber = idNum,
+                                    ApplicantSurname = surname,
+                                    Initials = initial,
+                                    Date = (file.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow).ToUniversalTime(),
+                                    CreatedAt = DateTime.UtcNow,
+                                    Status = SubmissionStatus.Submitted,
+                                    Type = SubmissionType.Individual,
+                                    Advisors = new List<Advisor> { advisor }
+                                };
+
+                                newSubmission.Documents.Add(new SubmissionDocument
+                                {
+                                    FileName = file.Name,
+                                    StorageKey = file.Id,
+                                    FileUrl = file.WebViewLink,
+                                    DateModified = (file.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow).ToUniversalTime()
+                                });
+
+                                dbContext.Submissions.Add(newSubmission);
+                            }
+                            else if (!existingSubmission.Documents.Any(d => d.StorageKey == file.Id))
+                            {
+                                _logger.LogInformation("Updating existing submission {IdNum} with new document {FileName}", idNum, file.Name);
+                                existingSubmission.Documents.Add(new SubmissionDocument
+                                {
+                                    FileName = file.Name,
+                                    StorageKey = file.Id,
+                                    FileUrl = file.WebViewLink,
+                                    DateModified = (file.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow).ToUniversalTime()
+                                });
+                            }
+                        }
+                        await dbContext.SaveChangesAsync();
+                    }
                 }
-
-                var fileListRequest = service.Files.List();
-                fileListRequest.Q = $"'{folder.Id}' in parents and mimeType = 'application/pdf' and trashed = false";
-                fileListRequest.SupportsAllDrives = true;
-                fileListRequest.IncludeItemsFromAllDrives = true;
-                fileListRequest.Fields = "files(id, name, webViewLink, modifiedTime)";
-                
-                var filesResult = await fileListRequest.ExecuteAsync();
-
-                foreach (var file in filesResult.Files)
+                catch (Exception folderEx)
                 {
-                    var (idNum, surname, initial) = ParseFileName(file.Name);
-                    
-                    if (string.IsNullOrEmpty(idNum)) continue;
-
-                    var existingSubmission = await dbContext.Submissions
-                        .Include(s => s.Advisors)
-                        .Include(s => s.Documents)
-                        .FirstOrDefaultAsync(s => s.IdNumber == idNum && s.Advisors.Any(a => a.Id == advisor.Id));
-
-                    if (existingSubmission == null)
-                    {
-                        _logger.LogInformation("Creating new submission for {IdNum} under {Advisor}", idNum, advisor.Name);
-                        var newSubmission = new Submission
-                        {
-                            IdNumber = idNum,
-                            ApplicantSurname = surname,
-                            Initials = initial,
-                            Date = (file.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow).ToUniversalTime(),
-                            CreatedAt = DateTime.UtcNow,
-                            Status = SubmissionStatus.Submitted,
-                            Type = SubmissionType.Individual,
-                            Advisors = new List<Advisor> { advisor }
-                        };
-
-                        newSubmission.Documents.Add(new SubmissionDocument
-                        {
-                            FileName = file.Name,
-                            StorageKey = file.Id,
-                            FileUrl = file.WebViewLink,
-                            DateModified = (file.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow).ToUniversalTime()
-                        });
-
-                        dbContext.Submissions.Add(newSubmission);
-                    }
-                    else if (!existingSubmission.Documents.Any(d => d.StorageKey == file.Id))
-                    {
-                        _logger.LogInformation("Updating existing submission {IdNum} with new document", idNum);
-                        existingSubmission.Documents.Add(new SubmissionDocument
-                        {
-                            FileName = file.Name,
-                            StorageKey = file.Id,
-                            FileUrl = file.WebViewLink,
-                            DateModified = (file.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow).ToUniversalTime()
-                        });
-                    }
+                    _logger.LogError(folderEx, "Error processing root folder {RootFolderId}", rootFolderId);
                 }
-                await dbContext.SaveChangesAsync();
             }
 
             _logger.LogInformation("Google Drive synchronization completed.");
