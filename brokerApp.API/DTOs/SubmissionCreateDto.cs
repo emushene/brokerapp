@@ -14,5 +14,6 @@ public class SubmissionCreateDto
     public DateTime Date { get; set; }
     public string FileUrl { get; set; } = string.Empty;
     public List<int> AdvisorIds { get; set; } = new List<int>();
+    public int? AdvisorGroupId { get; set; }
     public IFormFile? ApplicationForm { get; set; }
 }

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "fBoNGk9yv/k=",
+  "dgSpecHash": "vIGE2IfGRVU=",
   "success": true,
   "projectFilePath": "/Users/paulkagwe/Documents/brokerApp/brokerApp.API/brokerApp.API.csproj",
   "expectedPackageFiles": [
@@ -15,10 +15,11 @@
     "/Users/paulkagwe/.nuget/packages/fluentvalidation.dependencyinjectionextensions/11.11.0/fluentvalidation.dependencyinjectionextensions.11.11.0.nupkg.sha512",
     "/Users/paulkagwe/.nuget/packages/google.api.gax/4.12.1/google.api.gax.4.12.1.nupkg.sha512",
     "/Users/paulkagwe/.nuget/packages/google.api.gax.rest/4.12.1/google.api.gax.rest.4.12.1.nupkg.sha512",
-    "/Users/paulkagwe/.nuget/packages/google.apis/1.73.0/google.apis.1.73.0.nupkg.sha512",
-    "/Users/paulkagwe/.nuget/packages/google.apis.auth/1.73.0/google.apis.auth.1.73.0.nupkg.sha512",
-    "/Users/paulkagwe/.nuget/packages/google.apis.core/1.73.0/google.apis.core.1.73.0.nupkg.sha512",
+    "/Users/paulkagwe/.nuget/packages/google.apis/1.74.0/google.apis.1.74.0.nupkg.sha512",
+    "/Users/paulkagwe/.nuget/packages/google.apis.auth/1.74.0/google.apis.auth.1.74.0.nupkg.sha512",
+    "/Users/paulkagwe/.nuget/packages/google.apis.core/1.74.0/google.apis.core.1.74.0.nupkg.sha512",
     "/Users/paulkagwe/.nuget/packages/google.apis.drive.v3/1.73.0.4112/google.apis.drive.v3.1.73.0.4112.nupkg.sha512",
+    "/Users/paulkagwe/.nuget/packages/google.apis.sheets.v4/1.74.0.4061/google.apis.sheets.v4.1.74.0.4061.nupkg.sha512",
     "/Users/paulkagwe/.nuget/packages/google.apis.storage.v1/1.71.0.3920/google.apis.storage.v1.1.71.0.3920.nupkg.sha512",
     "/Users/paulkagwe/.nuget/packages/google.cloud.storage.v1/4.14.0/google.cloud.storage.v1.4.14.0.nupkg.sha512",
     "/Users/paulkagwe/.nuget/packages/humanizer.core/2.14.1/humanizer.core.2.14.1.nupkg.sha512",

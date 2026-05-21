@@ -7,6 +7,10 @@ import Dashboard from './Dashboard';
 import SubmissionsPage from './SubmissionsPage';
 import AdvisorsPage from './AdvisorsPage';
 import FinancialsPage from './FinancialsPage';
+import PerformancePage from './PerformancePage';
+import AdvisorPayslipsPage from './AdvisorPayslipsPage';
+import AdvancesPage from './AdvancesPage';
+import PromotionalGiftsPage from './PromotionalGiftsPage';
 
 function App() {
   return (
@@ -22,8 +26,13 @@ function App() {
           }>
             <Route path="/" element={<Dashboard />} />
             <Route path="/submissions" element={<SubmissionsPage />} />
+            <Route path="/performance" element={<PerformancePage />} />
             <Route path="/advisors" element={<AdvisorsPage />} />
             <Route path="/financials" element={<FinancialsPage />} />
+            <Route path="/advances" element={<AdvancesPage />} />
+            <Route path="/promotional-gifts" element={<PromotionalGiftsPage />} />
+            <Route path="/payslips" element={<AdvisorPayslipsPage />} />
+            <Route path="/payslips/:advisorId" element={<AdvisorPayslipsPage />} />
           </Route>
         </Routes>
       </Router>

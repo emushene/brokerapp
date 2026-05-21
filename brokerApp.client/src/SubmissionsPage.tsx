@@ -2,10 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { FilePlus, Loader2, CheckCircle2, Check, ChevronDown, X, DollarSign, Calendar, Hash, Search, Upload, AlertTriangle, ExternalLink, FileText } from 'lucide-react';
-import { submissionsApi, advisorsApi, financialsApi } from './lib/api';
+import { FilePlus, Loader2, CheckCircle2, Check, ChevronDown, X, DollarSign, Calendar, Hash, Search, Upload, AlertTriangle, ExternalLink, FileText, Users } from 'lucide-react';
+import { submissionsApi, advisorsApi, financialsApi, advisorGroupsApi } from './lib/api';
 import { SubmissionType, PaymentMethod, SubmissionStatus } from './lib/types';
-import type { Submission, Advisor } from './lib/types';
+import type { Submission, Advisor, AdvisorGroup } from './lib/types';
 import { DataTable } from './components/DataTable';
 import type { Column } from './components/DataTable';
 
@@ -31,8 +31,17 @@ const submissionSchema = z.object({
   type: z.nativeEnum(SubmissionType),
   method: z.nativeEnum(PaymentMethod),
   date: z.string().min(1, 'Date is required'),
-  advisorIds: z.array(z.number()).min(1, 'At least one advisor must be selected'),
+  advisorIds: z.array(z.number()),
+  advisorGroupId: z.number().optional(),
   applicationForm: z.instanceof(File).optional(),
+}).refine((data) => {
+  if (data.type === SubmissionType.Individual) {
+    return data.advisorIds.length > 0;
+  }
+  return data.advisorIds.length > 0 || data.advisorGroupId !== undefined;
+}, {
+  message: "At least one advisor or a group must be selected",
+  path: ["advisorIds"]
 });
 
 type SubmissionFormValues = z.infer<typeof submissionSchema>;
@@ -40,6 +49,7 @@ type SubmissionFormValues = z.infer<typeof submissionSchema>;
 const SubmissionsPage: React.FC = () => {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [availableAdvisors, setAvailableAdvisors] = useState<Advisor[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<AdvisorGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -50,6 +60,7 @@ const SubmissionsPage: React.FC = () => {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentRef, setPaymentRef] = useState<string>('');
+  const [presentAdvisorIds, setPresentAdvisorIds] = useState<number[]>([]);
   const [recordingPayment, setRecordingPayment] = useState(false);
 
   // Lapse Modal State
@@ -64,6 +75,9 @@ const SubmissionsPage: React.FC = () => {
   // Document Upload State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
+
+  // Search state
+  const searchTimeout = useRef<any>(null);
 
   // Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -106,10 +120,42 @@ const SubmissionsPage: React.FC = () => {
     }
   };
 
+  const fetchGroups = async () => {
+    try {
+      const data = await advisorGroupsApi.getAll();
+      setAvailableGroups(data);
+    } catch (error) {
+      console.error('Error fetching groups', error);
+    }
+  };
+
   useEffect(() => {
     fetchSubmissions();
     fetchAdvisors();
+    fetchGroups();
   }, []);
+
+  const handleSearch = (term: string) => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        setLoading(true);
+        if (term.trim()) {
+          const data = await submissionsApi.search(term);
+          setSubmissions(data);
+        } else {
+          // If search is cleared, fetch the default list
+          const data = await submissionsApi.getAll();
+          setSubmissions(data);
+        }
+      } catch (error) {
+        console.error('Error searching submissions', error);
+      } finally {
+        setLoading(false);
+      }
+    }, 500);
+  };
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -121,6 +167,17 @@ const SubmissionsPage: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (showPdfModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showPdfModal]);
 
   const openPdfViewer = (e: React.MouseEvent, url: string) => {
     e.preventDefault();
@@ -162,11 +219,13 @@ const SubmissionsPage: React.FC = () => {
         submissionId: selectedSubmission.id,
         amountReceived: parseFloat(paymentAmount),
         dateReceived: new Date().toISOString(),
-        reference: finalRef
+        reference: finalRef,
+        selectedAdvisorIds: presentAdvisorIds
       });
       setShowPaymentModal(false);
       setPaymentAmount('');
       setPaymentRef('');
+      setPresentAdvisorIds([]);
       fetchSubmissions();
     } catch (error) {
       console.error('Error recording payment:', error);
@@ -176,9 +235,13 @@ const SubmissionsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (showPaymentModal && selectedSubmission && !paymentRef) {
-      const dateStr = new Date().toISOString().slice(2,10).replace(/-/g, '');
-      setPaymentRef(`INS-${selectedSubmission.applicantSurname.toUpperCase()}-${dateStr}-${selectedSubmission.id}`);
+    if (showPaymentModal && selectedSubmission) {
+      if (!paymentRef) {
+        const dateStr = new Date().toISOString().slice(2,10).replace(/-/g, '');
+        setPaymentRef(`INS-${selectedSubmission.applicantSurname.toUpperCase()}-${dateStr}-${selectedSubmission.id}`);
+      }
+      // Default to all advisors being present
+      setPresentAdvisorIds(selectedSubmission.advisors.map(a => a.id));
     }
   }, [showPaymentModal, selectedSubmission]);
 
@@ -301,15 +364,23 @@ const SubmissionsPage: React.FC = () => {
     {
       header: 'Advisors',
       accessor: (s) => (
-        <div className="flex flex-wrap gap-1">
-          {s.advisors.map(a => (
-            <span key={a.id} title={a.code} className="inline-flex items-center gap-0.5 bg-slate-900/50 border border-slate-700 text-[9px] text-slate-300 px-1.5 py-0.5 rounded">
-              {a.name.split(' ')[0]}
-            </span>
-          ))}
+        <div className="flex flex-col gap-1">
+          {s.advisorGroupName && (
+            <div className="flex items-center gap-1.5 text-purple-400 font-bold text-[10px] mb-1">
+               <Users className="w-3 h-3" />
+               {s.advisorGroupName}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {s.advisors.map(a => (
+              <span key={a.id} title={a.code} className="inline-flex items-center gap-0.5 bg-slate-900/50 border border-slate-700 text-[9px] text-slate-300 px-1.5 py-0.5 rounded">
+                {a.name.split(' ')[0]}
+              </span>
+            ))}
+          </div>
         </div>
       ),
-      sortAccessor: (s) => s.advisors.map(a => `${a.name} ${a.code}`).join(' ')
+      sortAccessor: (s) => `${s.advisorGroupName || ''} ${s.advisors.map(a => `${a.name} ${a.code}`).join(' ')}`
     },
     {
       header: 'Documents',
@@ -530,79 +601,102 @@ const SubmissionsPage: React.FC = () => {
               {errors.date && <p className="text-red-500 text-xs">{errors.date.message}</p>}
             </div>
 
-            <div className="md:col-span-2 lg:col-span-1 space-y-2">
-              <label className="text-sm font-semibold text-slate-300">
-                {submissionType === SubmissionType.Individual ? 'Select Advisor' : 'Select Advisors (Joint Policy)'}
-              </label>
-              
-              <div className="relative" ref={dropdownRef}>
-                <div 
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer flex items-center justify-between min-h-[50px]"
-                >
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedAdvisorsData.length > 0 ? (
-                      selectedAdvisorsData.map(advisor => (
-                        <span key={advisor.id} className="inline-flex items-center gap-1 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-md">
-                          {advisor.name}
-                          <X 
-                            className="w-3 h-3 cursor-pointer hover:text-white/70" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleAdvisor(advisor.id);
-                            }}
-                          />
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-slate-500 text-sm">Choose advisors...</span>
+            <div className="md:col-span-2 lg:col-span-3 pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-300">
+                    {submissionType === SubmissionType.Individual ? 'Select Advisor' : 'Individual Advisors (Joint Policy)'}
+                  </label>
+                  
+                  <div className="relative" ref={dropdownRef}>
+                    <div 
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none cursor-pointer flex items-center justify-between min-h-[50px]"
+                    >
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedAdvisorsData.length > 0 ? (
+                          selectedAdvisorsData.map(advisor => (
+                            <span key={advisor.id} className="inline-flex items-center gap-1 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-md">
+                              {advisor.name}
+                              <X 
+                                className="w-3 h-3 cursor-pointer hover:text-white/70" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleAdvisor(advisor.id);
+                                }}
+                              />
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-500 text-sm">Choose advisors...</span>
+                        )}
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                    </div>
+
+                    {isDropdownOpen && (
+                      <div className="absolute z-50 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="p-2 border-b border-slate-700">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+                            <input 
+                              autoFocus
+                              placeholder="Search advisors..."
+                              value={advisorSearch}
+                              onChange={(e) => setAdvisorSearch(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/50"
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-[240px] overflow-y-auto p-1 custom-scrollbar">
+                          {filteredAdvisors.length > 0 ? (
+                            filteredAdvisors.map(advisor => {
+                              const isSelected = selectedAdvisorIds.includes(advisor.id);
+                              return (
+                                <div
+                                  key={advisor.id}
+                                  onClick={() => toggleAdvisor(advisor.id)}
+                                  className={`flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors ${
+                                    isSelected ? 'bg-blue-600/20 text-blue-400' : 'text-slate-300 hover:bg-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-bold">{advisor.name}</span>
+                                    <span className="text-[10px] opacity-50 font-mono tracking-wider">{advisor.code}</span>
+                                  </div>
+                                  {isSelected && <Check className="w-4 h-4" />}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="p-4 text-center text-slate-500 text-sm">No advisors found.</div>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                  {errors.advisorIds && <p className="text-red-500 text-xs">{errors.advisorIds.message}</p>}
                 </div>
 
-                {isDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="p-2 border-b border-slate-700">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
-                        <input 
-                          autoFocus
-                          placeholder="Search advisors..."
-                          value={advisorSearch}
-                          onChange={(e) => setAdvisorSearch(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500/50"
-                        />
-                      </div>
+                {submissionType === SubmissionType.Group && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Assign to Advisor Group (Optional)</label>
+                    <div className="relative">
+                      <select 
+                        {...register('advisorGroupId', { valueAsNumber: true })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500/50 outline-none appearance-none"
+                      >
+                        <option value="">No Group Assignment</option>
+                        {availableGroups.map(group => (
+                          <option key={group.id} value={group.id}>{group.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
                     </div>
-                    <div className="max-h-[240px] overflow-y-auto p-1 custom-scrollbar">
-                      {filteredAdvisors.length > 0 ? (
-                        filteredAdvisors.map(advisor => {
-                          const isSelected = selectedAdvisorIds.includes(advisor.id);
-                          return (
-                            <div
-                              key={advisor.id}
-                              onClick={() => toggleAdvisor(advisor.id)}
-                              className={`flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors ${
-                                isSelected ? 'bg-blue-600/20 text-blue-400' : 'text-slate-300 hover:bg-slate-700'
-                              }`}
-                            >
-                              <div className="flex flex-col">
-                                <span className="text-sm font-bold">{advisor.name}</span>
-                                <span className="text-[10px] opacity-50 font-mono tracking-wider">{advisor.code}</span>
-                              </div>
-                              {isSelected && <Check className="w-4 h-4" />}
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="p-4 text-center text-slate-500 text-sm">No advisors found.</div>
-                      )}
-                    </div>
+                    <p className="text-[10px] text-slate-500">If assigned to a group, all members will be linked.</p>
                   </div>
                 )}
               </div>
-              {errors.advisorIds && <p className="text-red-500 text-xs">{errors.advisorIds.message}</p>}
             </div>
 
             <div className="md:col-span-2 lg:col-span-1 space-y-2">
@@ -668,6 +762,7 @@ const SubmissionsPage: React.FC = () => {
         columns={columns}
         actions={actions}
         loading={loading}
+        onSearch={handleSearch}
         searchPlaceholder="Search applicants, ID numbers, or references..."
       />
 
@@ -729,6 +824,46 @@ const SubmissionsPage: React.FC = () => {
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-4 text-white focus:ring-2 focus:ring-blue-500/50 outline-none placeholder:text-slate-600" 
                   />
                 </div>
+
+                {selectedSubmission.advisors.length > 0 && (
+                  <div className="space-y-3">
+                    <label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-purple-500" />
+                      Present Advisors (Commission Recipients)
+                    </label>
+                    <div className="grid grid-cols-1 gap-2 bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+                      {selectedSubmission.advisors.map(advisor => {
+                        const isPresent = presentAdvisorIds.includes(advisor.id);
+                        return (
+                          <div 
+                            key={advisor.id}
+                            onClick={() => {
+                              if (isPresent) {
+                                setPresentAdvisorIds(prev => prev.filter(id => id !== advisor.id));
+                              } else {
+                                setPresentAdvisorIds(prev => [...prev, advisor.id]);
+                              }
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
+                              isPresent ? 'bg-blue-600/10 border-blue-500/30 text-white' : 'bg-slate-900/50 border-transparent text-slate-500 opacity-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black ${isPresent ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-600'}`}>
+                                 {advisor.name.charAt(0)}
+                               </div>
+                               <div>
+                                 <p className="text-xs font-bold">{advisor.name}</p>
+                                 <p className="text-[9px] font-mono uppercase opacity-50">{advisor.code}</p>
+                               </div>
+                            </div>
+                            {isPresent && <Check className="w-4 h-4 text-blue-500" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 text-xs text-slate-500 p-2 bg-slate-800/50 rounded-lg">
                   <Calendar className="w-3 h-3" />

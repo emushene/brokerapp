@@ -24,6 +24,7 @@ interface DataTableProps<T> {
   actions?: Action<T>[];
   pageSize?: number;
   filterElement?: React.ReactNode;
+  onSearch?: (term: string) => void;
 }
 
 export function DataTable<T extends { id: string | number }>({
@@ -34,6 +35,7 @@ export function DataTable<T extends { id: string | number }>({
   actions = [],
   pageSize = 10,
   filterElement,
+  onSearch,
 }: DataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,7 +43,7 @@ export function DataTable<T extends { id: string | number }>({
 
   // Search logic
   const searchedData = useMemo(() => {
-    if (!searchTerm) return data;
+    if (onSearch || !searchTerm) return data;
     const lowerSearch = searchTerm.toLowerCase();
     
     return data.filter((item) => {
@@ -103,8 +105,12 @@ export function DataTable<T extends { id: string | number }>({
 
   // Reset to page 1 on search
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
+    const term = e.target.value;
+    setSearchTerm(term);
     setCurrentPage(1);
+    if (onSearch) {
+      onSearch(term);
+    }
   };
 
   const requestSort = (index: number) => {

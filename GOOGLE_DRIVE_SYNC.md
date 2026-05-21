@@ -34,12 +34,19 @@ Settings are managed in `brokerApp.API/appsettings.json`:
 ```json
 "GoogleDrive": {
   "KeyFilePath": "broker-app-key.json",
-  "RootFolderId": "1-0SxxYnKTE7KvHyGIqKqkT6Lu1E_ejhY"
+  "RootFolderIds": [
+    "1-0SxxYnKTE7KvHyGIqKqkT6Lu1E_ejhY",
+    "1yzKn1dbmK2beyGuY-u1U08kFfE-IJxNB"
+  ],
+  "ReportsFolderId": "1f8SeFmgi6e5J1wAzR6GpJoH7UKa2WrgT",
+  "SyncIntervalMinutes": 180
 }
 ```
 
 *   **KeyFilePath:** The path to the Google Service Account JSON key.
-*   **RootFolderId:** The ID of the parent folder in Google Drive containing the advisor subfolders.
+*   **RootFolderIds:** An array of parent folder IDs in Google Drive. Each folder contains advisor subfolders that will be synchronized.
+*   **ReportsFolderId:** The ID of the folder where generated reports (like spreadsheets) are stored.
+*   **SyncIntervalMinutes:** Frequency of the automated synchronization in minutes.
 
 ## Technical Architecture
 

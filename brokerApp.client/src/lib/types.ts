@@ -24,8 +24,26 @@ export type SubmissionStatus = (typeof SubmissionStatus)[keyof typeof Submission
 export interface Advisor {
   id: number;
   name: string;
+  email: string;
   code: string;
   phoneNumber: string;
+  commissionPercentage1stYear: number;
+  commissionPercentage2ndYear: number;
+}
+
+export interface AdvisorGroup {
+  id: number;
+  name: string;
+  description: string;
+  memberIds: number[];
+  members?: Advisor[];
+}
+
+export interface AdvisorGroupDto {
+  id?: number;
+  name: string;
+  description: string;
+  memberIds: number[];
 }
 
 export interface SubmissionDocument {
@@ -48,6 +66,8 @@ export interface Submission {
   method: string;
   status: string;
   date: string;
+  advisorGroupId?: number;
+  advisorGroupName?: string;
   advisors: Advisor[];
   documents: SubmissionDocument[];
   createdAt: string;
@@ -66,6 +86,7 @@ export interface SubmissionCreateDto {
   date: string;
   fileUrl?: string;
   advisorIds: number[];
+  advisorGroupId?: number;
   applicationForm?: File;
 }
 
@@ -79,6 +100,7 @@ export interface PolicyPaymentCreateDto {
 export interface Commission {
   id: number;
   policyPaymentId?: number;
+  commissionStatementId?: number;
   amountReceived: number;
   reference: string;
   advisorId: number;
@@ -103,10 +125,12 @@ export interface StatementItem {
   premium: number;
   category?: string;
   matchedSubmissionId?: number;
+  matchedSubmission?: Submission;
   advisorName?: string;
   fileUrl?: string;
   googleDriveLink?: string;
   isMatched: boolean;
+  isConfirmed: boolean;
 }
 
 export interface MovementItem {
@@ -118,21 +142,84 @@ export interface MovementItem {
   premium: number;
   category?: string;
   matchedSubmissionId?: number;
+  matchedSubmission?: Submission;
   advisorName?: string;
   fileUrl?: string;
   googleDriveLink?: string;
   isMatched: boolean;
+  isConfirmed: boolean;
 }
 
 export interface CommissionStatement {
   id: number;
   fileName: string;
   fileUrl?: string;
+  googleSheetUrl?: string;
   statementDate: string;
   uploadDate: string;
   totalCommission: number;
   totalRows: number;
   matchedRows: number;
+  status: string;
+  emailSentDate?: string;
   items: StatementItem[];
   movementItems: MovementItem[];
+}
+
+export interface WeeklyStats {
+  weekStarting: string;
+  weekLabel: string;
+  submissionCount: number;
+  totalPremium: number;
+}
+
+export interface AdvisorPerformance {
+  advisorId: number;
+  advisorName: string;
+  weeklyStats: WeeklyStats[];
+}
+
+export const AdjustmentType = {
+  Advance: 0,
+  PromotionalItem: 1,
+  Damage: 2,
+  Maintenance: 3,
+  EventFee: 4,
+  Other: 5
+} as const;
+
+export type AdjustmentType = (typeof AdjustmentType)[keyof typeof AdjustmentType];
+
+export const AdjustmentStatus = {
+  Pending: 0,
+  PartiallyPaid: 1,
+  Cleared: 2
+} as const;
+
+export type AdjustmentStatus = (typeof AdjustmentStatus)[keyof typeof AdjustmentStatus];
+
+export interface PromotionalItem {
+  id: number;
+  name: string;
+  price: number;
+  category: string;
+  sizes: string;
+}
+
+export interface AccountAdjustment {
+  id: number;
+  totalAmount: number;
+  remainingBalance: number;
+  quantity: number;
+  description: string;
+  dateIncurred: string;
+  type: AdjustmentType;
+  status: AdjustmentStatus;
+  advisorId?: number;
+  advisorName?: string;
+  advisorGroupId?: number;
+  advisorGroupName?: string;
+  promotionalItemId?: number;
+  promotionalItemName?: string;
+  promotionalItem?: PromotionalItem;
 }

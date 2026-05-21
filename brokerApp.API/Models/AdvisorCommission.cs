@@ -9,6 +9,9 @@ public class AdvisorCommission
     
     public int? SubmissionId { get; set; }
     public Submission? Submission { get; set; }
+
+    public int? CommissionStatementId { get; set; }
+    public CommissionStatement? CommissionStatement { get; set; }
     
     public int AdvisorId { get; set; }
     public Advisor Advisor { get; set; } = null!;

@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "broker-app-493211",
+  "private_key_id": "86ca4ee5c22e1aaae838efbaf5d2dd9714721adf",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC2bOU1P5heMCcA\n/LVfr6oBpdkaN/x0jjg5oHsNbfEH+F79loDhJWFJGLSOImdmF+B/LBKSue03xm5d\n4tftwjW+KN8vJ/M8XSL/VpNtEq44vRf+q0HkfYfQINqAsdZoEA/Ev7wj2Wppvkgo\nZEU/uxvSKM9UE0Wxea5Q/LXgTnt3WyA1jsnpY7D3y794KLKBgcXqshOsmQnw/pTo\nZ9yT4jVO19z8VDueY8IUrQzZ+OnSNo75KC4mWVlQT14mI/nwplSyRieBDOsHLXEc\nlFBfs2PAu3KzdQsjMoBKCCH7EQRUBcrtKh0WoNzGAA8J4QpqcgRxbqkeUFS56wgl\nUM5x/uYZAgMBAAECggEAHebNDjSZnsyxQ/voJeJHEUSUSLQnFRrPtABuUxXzhW0s\nctAV2XG1V9QtGkQg4y7kPSwl8jd4HuWPZyO85YupH/2WkaXwfHM+vpA8E4uVk5bJ\nJVUAdLmvxolwD1q3DHEfiI4uAklLpEAMl1RSNn9OsNzAGSWcjZnmnP9DN5xdqAM4\ntIO05t65fYy6ZC9/2dd3tQqcctNZEPRfS7BnGcLP50sl3PYtQ1PsNtZcVbXnvepY\n4d7s7kvhYVxsw7ptXZ6l0vqcCpVcxoEVyXdwnoO6oNKGxX0L9Yi/BFLy15SjMOTt\nhCGh1fDepEpGqNfvE3aa/N99URhiH1LlexEYCpi4ZQKBgQDZXcAepKFGgPEKKBmH\nEsKmpBExX7cLmnlxk/krkxYm/dK36oif83xo+q3vR09VE4mklg1XwN2eMLGPgU+r\nOF4a17QPunTe7v6GtNb+O3P6N3hkljXlu5mqbe8kdaYHn6Ylorc0u0C+loRybhhL\nZwPKerkyr+GUGiKCbMrk0pCvJQKBgQDW2VKbKzirVoc0krMddZ1AQgoRouyKlsIj\nxnKd3OEzvykRBmEYbe7rXWm85O2AOwGdwkXpOUNgxh+NhYpZ7miEvXfuiAiWUXb3\n1TVZrF5pxG5TBAIDuTCe4TE9kQ9WiQirjRC0zvamuN8N56R0B/vkSpI2O/cmlKpm\nA6w8htky5QKBgBrlI7lm62Ga4Lg9//KbmqQd1tbCHhb8dRxdj84Zc/s9Gs6Q4XjR\nGsqugckCjMldEoHf4yTBg2poYf/8owvvfI1btTbg/kb7UVj/lT59wrrqFCZ2A5M6\nZCgXVCixueplkZxEhuCqbrdmTlsOTkk+JNTv3GxuIL4/gZebuHsZprdVAoGBAKci\nLFa1SsJO76MANAJIymmAdiC+I1C0cpYt/F+9whrlLGcoFURR0Lib1HOziuZkAJ/e\nz0/c0gNoXIdVSQkoo3oPgkq23CdDfE7TN0tpAZE507EUvxRybdZKzGlefRYOSAZc\nGJDvJ4UO78X7Wz1AML2pHRC/mUYUBHKTjNsQ88nZAoGARSz9DXce7tk7EHYWRFTf\no5ac4FcpHtM95+Y1NUqlPqcgXIiFSS1Pouh8IhsxOr5Bv6uNZ46zeP0i4WouMQR+\nZa/wyeAem2C0CZ5C3KfSGSDwzU+6U3gq7Hdquve3Fayyz3X6ds5BDHEAHOWwMfCG\nsSoTNQUCJTpOoUQSkXyYQxw=\n-----END PRIVATE KEY-----\n",
+  "client_email": "broker-app-gdrive-acc@broker-app-493211.iam.gserviceaccount.com",
+  "client_id": "111753933364683916109",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/broker-app-gdrive-acc%40broker-app-493211.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

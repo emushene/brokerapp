@@ -20,7 +20,38 @@ namespace brokerApp.API.Migrations
                 .HasAnnotation("ProductVersion", "10.0.6")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("AdvisorAdvisorGroup", b =>
+                {
+                    b.Property<int>("AdvisorGroupId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MembersId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("AdvisorGroupId", "MembersId");
+
+                    b.HasIndex("MembersId");
+
+                    b.ToTable("AdvisorGroupMembers", (string)null);
+                });
+
+            modelBuilder.Entity("AdvisorPolicyRecord", b =>
+                {
+                    b.Property<int>("AdvisorsId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PolicyRecordPolicyNumber")
+                        .HasColumnType("text");
+
+                    b.HasKey("AdvisorsId", "PolicyRecordPolicyNumber");
+
+                    b.HasIndex("PolicyRecordPolicyNumber");
+
+                    b.ToTable("PolicyAdvisors", (string)null);
+                });
 
             modelBuilder.Entity("AdvisorSubmission", b =>
                 {
@@ -37,6 +68,56 @@ namespace brokerApp.API.Migrations
                     b.ToTable("SubmissionAdvisors", (string)null);
                 });
 
+            modelBuilder.Entity("brokerApp.API.Models.AccountAdjustment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AdvisorGroupId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("AdvisorId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("DateIncurred")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("PromotionalItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("RemainingBalance")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdvisorGroupId");
+
+                    b.HasIndex("AdvisorId");
+
+                    b.HasIndex("PromotionalItemId");
+
+                    b.ToTable("AccountAdjustments");
+                });
+
             modelBuilder.Entity("brokerApp.API.Models.Advisor", b =>
                 {
                     b.Property<int>("Id")
@@ -46,6 +127,16 @@ namespace brokerApp.API.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("CommissionPercentage1stYear")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("CommissionPercentage2ndYear")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -80,6 +171,9 @@ namespace brokerApp.API.Migrations
                     b.Property<decimal>("CommissionAmount")
                         .HasColumnType("numeric");
 
+                    b.Property<int?>("CommissionStatementId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("DateCalculated")
                         .HasColumnType("timestamp with time zone");
 
@@ -102,11 +196,34 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("AdvisorId");
 
+                    b.HasIndex("CommissionStatementId");
+
                     b.HasIndex("PolicyPaymentId");
 
                     b.HasIndex("SubmissionId");
 
                     b.ToTable("AdvisorCommissions");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.AdvisorGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AdvisorGroups");
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.CommissionStatement", b =>
@@ -117,6 +234,9 @@ namespace brokerApp.API.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("EmailSentDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -124,11 +244,18 @@ namespace brokerApp.API.Migrations
                     b.Property<string>("FileUrl")
                         .HasColumnType("text");
 
+                    b.Property<string>("GoogleSheetUrl")
+                        .HasColumnType("text");
+
                     b.Property<int>("MatchedRows")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("StatementDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<decimal>("TotalCommission")
                         .HasColumnType("numeric");
@@ -174,6 +301,9 @@ namespace brokerApp.API.Migrations
 
                     b.Property<string>("GoogleDriveLink")
                         .HasColumnType("text");
+
+                    b.Property<bool>("IsConfirmed")
+                        .HasColumnType("boolean");
 
                     b.Property<int?>("MatchedSubmissionId")
                         .HasColumnType("integer");
@@ -226,6 +356,67 @@ namespace brokerApp.API.Migrations
                     b.ToTable("PolicyPayments");
                 });
 
+            modelBuilder.Entity("brokerApp.API.Models.PolicyRecord", b =>
+                {
+                    b.Property<string>("PolicyNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Initials")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("LastCommissionAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Premium")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Surname")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("PolicyNumber");
+
+                    b.ToTable("PolicyRecords");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.PromotionalItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Sizes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PromotionalItems");
+                });
+
             modelBuilder.Entity("brokerApp.API.Models.StatementItem", b =>
                 {
                     b.Property<int>("Id")
@@ -265,6 +456,9 @@ namespace brokerApp.API.Migrations
                     b.Property<string>("GoogleDriveLink")
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsConfirmed")
+                        .HasColumnType("boolean");
+
                     b.Property<int?>("MatchedSubmissionId")
                         .HasColumnType("integer");
 
@@ -291,6 +485,9 @@ namespace brokerApp.API.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AdvisorGroupId")
+                        .HasColumnType("integer");
 
                     b.Property<string>("ApplicantPhoneNumber")
                         .IsRequired()
@@ -336,6 +533,25 @@ namespace brokerApp.API.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AdvisorGroupId");
+
+                    b.HasIndex("ApplicantSurname");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("ApplicantSurname"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("ApplicantSurname"), new[] { "gin_trgm_ops" });
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Initials");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Initials"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Initials"), new[] { "gin_trgm_ops" });
+
+                    b.HasIndex("PolicyNumber");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("PolicyNumber"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("PolicyNumber"), new[] { "gin_trgm_ops" });
+
                     b.ToTable("Submissions");
                 });
 
@@ -372,6 +588,36 @@ namespace brokerApp.API.Migrations
                     b.ToTable("SubmissionDocuments");
                 });
 
+            modelBuilder.Entity("AdvisorAdvisorGroup", b =>
+                {
+                    b.HasOne("brokerApp.API.Models.AdvisorGroup", null)
+                        .WithMany()
+                        .HasForeignKey("AdvisorGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("brokerApp.API.Models.Advisor", null)
+                        .WithMany()
+                        .HasForeignKey("MembersId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AdvisorPolicyRecord", b =>
+                {
+                    b.HasOne("brokerApp.API.Models.Advisor", null)
+                        .WithMany()
+                        .HasForeignKey("AdvisorsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("brokerApp.API.Models.PolicyRecord", null)
+                        .WithMany()
+                        .HasForeignKey("PolicyRecordPolicyNumber")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AdvisorSubmission", b =>
                 {
                     b.HasOne("brokerApp.API.Models.Advisor", null)
@@ -387,6 +633,27 @@ namespace brokerApp.API.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("brokerApp.API.Models.AccountAdjustment", b =>
+                {
+                    b.HasOne("brokerApp.API.Models.AdvisorGroup", "AdvisorGroup")
+                        .WithMany()
+                        .HasForeignKey("AdvisorGroupId");
+
+                    b.HasOne("brokerApp.API.Models.Advisor", "Advisor")
+                        .WithMany()
+                        .HasForeignKey("AdvisorId");
+
+                    b.HasOne("brokerApp.API.Models.PromotionalItem", "PromotionalItem")
+                        .WithMany()
+                        .HasForeignKey("PromotionalItemId");
+
+                    b.Navigation("Advisor");
+
+                    b.Navigation("AdvisorGroup");
+
+                    b.Navigation("PromotionalItem");
+                });
+
             modelBuilder.Entity("brokerApp.API.Models.AdvisorCommission", b =>
                 {
                     b.HasOne("brokerApp.API.Models.Advisor", "Advisor")
@@ -394,6 +661,10 @@ namespace brokerApp.API.Migrations
                         .HasForeignKey("AdvisorId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("brokerApp.API.Models.CommissionStatement", "CommissionStatement")
+                        .WithMany()
+                        .HasForeignKey("CommissionStatementId");
 
                     b.HasOne("brokerApp.API.Models.PolicyPayment", "PolicyPayment")
                         .WithMany("Commissions")
@@ -404,6 +675,8 @@ namespace brokerApp.API.Migrations
                         .HasForeignKey("SubmissionId");
 
                     b.Navigation("Advisor");
+
+                    b.Navigation("CommissionStatement");
 
                     b.Navigation("PolicyPayment");
 
@@ -455,6 +728,15 @@ namespace brokerApp.API.Migrations
                     b.Navigation("Statement");
                 });
 
+            modelBuilder.Entity("brokerApp.API.Models.Submission", b =>
+                {
+                    b.HasOne("brokerApp.API.Models.AdvisorGroup", "AdvisorGroup")
+                        .WithMany("Submissions")
+                        .HasForeignKey("AdvisorGroupId");
+
+                    b.Navigation("AdvisorGroup");
+                });
+
             modelBuilder.Entity("brokerApp.API.Models.SubmissionDocument", b =>
                 {
                     b.HasOne("brokerApp.API.Models.Submission", "Submission")
@@ -464,6 +746,11 @@ namespace brokerApp.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("brokerApp.API.Models.AdvisorGroup", b =>
+                {
+                    b.Navigation("Submissions");
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.CommissionStatement", b =>

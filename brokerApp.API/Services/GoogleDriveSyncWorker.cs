@@ -25,12 +25,13 @@ public class GoogleDriveSyncWorker : BackgroundService
     {
         _logger.LogInformation("Google Drive Sync Worker is starting.");
 
-        // Initial delay to allow the app to warm up
-        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+        // Initial delay: Wait 1 hour before starting the first sync as requested
+        _logger.LogInformation("Waiting 1 hour before starting the first synchronization...");
+        await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var intervalMinutes = _configuration.GetValue<int>("GoogleDrive:SyncIntervalMinutes", 30);
+            var intervalMinutes = _configuration.GetValue<int>("GoogleDrive:SyncIntervalMinutes", 180);
             var interval = TimeSpan.FromMinutes(intervalMinutes);
 
             try

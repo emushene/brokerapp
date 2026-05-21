@@ -13,6 +13,8 @@ public class SubmissionResponseDto
     public string Method { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public DateTime Date { get; set; }
+    public int? AdvisorGroupId { get; set; }
+    public string? AdvisorGroupName { get; set; }
     public List<AdvisorDto> Advisors { get; set; } = new List<AdvisorDto>();
     public List<SubmissionDocumentDto> Documents { get; set; } = new List<SubmissionDocumentDto>();
     public DateTime CreatedAt { get; set; }

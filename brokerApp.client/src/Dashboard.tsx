@@ -12,7 +12,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const fetchSubmissions = async () => {
       try {
-        const response = await api.get('/Submissions');
+        const response = await api.get('/Submissions/all');
         setSubmissions(response.data);
       } catch (error) {
         console.error('Error fetching submissions', error);

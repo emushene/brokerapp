@@ -2,25 +2,55 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Pencil, Trash2, Loader2, Phone, UserPlus, BarChart3, X, FileText, CheckCircle2, AlertCircle, Clock, DollarSign } from 'lucide-react';
-import api, { advisorsApi, submissionsApi, financialsApi } from './lib/api';
-import type { Advisor, Submission, Commission } from './lib/types';
+import { Pencil, Trash2, Loader2, Phone, UserPlus, BarChart3, X, FileText, CheckCircle2, AlertCircle, Clock, DollarSign, Receipt, Mail, Percent, Users, User, Plus, Check, Wallet, Package, Activity, CreditCard, ShieldCheck } from 'lucide-react';
+import api, { advisorsApi, submissionsApi, financialsApi, advisorGroupsApi } from './lib/api';
+import type { Advisor, Submission, Commission, AdvisorGroup, AdvisorGroupDto, PromotionalItem, AccountAdjustment } from './lib/types';
+import { AdjustmentType } from './lib/types';
 import { DataTable } from './components/DataTable';
 import type { Column } from './components/DataTable';
+import { useNavigate } from 'react-router-dom';
 
 const advisorSchema = z.object({
   name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email address'),
   code: z.string().min(1, 'Code is required'),
   phoneNumber: z.string().min(10, 'Phone number must be at least 10 digits'),
+  commissionPercentage1stYear: z.coerce.number().min(0).max(100),
+  commissionPercentage2ndYear: z.coerce.number().min(0).max(100),
+});
+
+const groupSchema = z.object({
+  name: z.string().min(1, 'Group name is required'),
+  description: z.string().optional(),
+  memberIds: z.array(z.number()).min(1, 'At least one member is required'),
 });
 
 type AdvisorFormValues = z.infer<typeof advisorSchema>;
+type GroupFormValues = z.infer<typeof groupSchema>;
 
 const AdvisorsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'advisors' | 'groups' | 'catalog'>('advisors');
+  
+  // Advisors State
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [loadingAdvisors, setLoadingAdvisors] = useState(true);
+  const [submittingAdvisor, setSubmittingAdvisor] = useState(false);
   const [editingAdvisor, setEditingAdvisor] = useState<Advisor | null>(null);
+
+  // Groups State
+  const [groups, setGroups] = useState<AdvisorGroup[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+  const [submittingGroup, setSubmittingGroup] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<AdvisorGroup | null>(null);
+
+  // Ledger State
+  const [showLedgerModal, setShowLedgerModal] = useState(false);
+  const [ledgerTarget, setLedgerTarget] = useState<{ type: 'advisor' | 'group', id: number, name: string } | null>(null);
+  const [outstandingAdjustments, setOutstandingAdjustments] = useState<AccountAdjustment[]>([]);
+  const [loadingAdjustments, setLoadingAdjustments] = useState(false);
+  const [catalogItems, setCatalogItems] = useState<PromotionalItem[]>([]);
+  const [submittingAdjustment, setSubmittingAdjustment] = useState(false);
 
   // Modal State
   const [showInsights, setShowInsights] = useState(false);
@@ -29,30 +59,150 @@ const AdvisorsPage: React.FC = () => {
   const [advisorCommissions, setAdvisorCommissions] = useState<Commission[]>([]);
   const [loadingInsights, setLoadingInsights] = useState(false);
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<AdvisorFormValues>({
+  const advisorForm = useForm<AdvisorFormValues>({
     resolver: zodResolver(advisorSchema),
     defaultValues: {
-      name: '',
-      code: '',
-      phoneNumber: '',
+      name: '', email: '', code: '', phoneNumber: '',
+      commissionPercentage1stYear: 70,
+      commissionPercentage2ndYear: 70,
     }
   });
 
-  const fetchAdvisors = async () => {
+  const groupForm = useForm<GroupFormValues>({
+    resolver: zodResolver(groupSchema),
+    defaultValues: {
+      name: '', description: '', memberIds: []
+    }
+  });
+
+  const adjustmentForm = useForm<{
+    type: AdjustmentType;
+    totalAmount: number;
+    description: string;
+    promotionalItemId?: number;
+  }>({
+    defaultValues: {
+      totalAmount: 0,
+      description: '',
+    }
+  });
+
+  // Catalog State
+  const [submittingCatalogItem, setSubmittingCatalogItem] = useState(false);
+  const catalogSchema = z.object({
+    name: z.string().min(1, 'Item name is required'),
+    price: z.coerce.number().min(0, 'Price must be positive'),
+    category: z.string().min(1, 'Category is required'),
+    sizes: z.string().optional(),
+  });
+  type CatalogFormValues = z.infer<typeof catalogSchema>;
+  const catalogForm = useForm<CatalogFormValues>({
+    resolver: zodResolver(catalogSchema),
+    defaultValues: { name: '', price: 0, category: 'Uniform', sizes: '' }
+  });
+
+  const onCatalogSubmit = async (data: CatalogFormValues) => {
+    setSubmittingCatalogItem(true);
     try {
-      setLoading(true);
-      const data = await advisorsApi.getAll();
-      setAdvisors(data);
+      await financialsApi.addPromotionalItem(data);
+      catalogForm.reset();
+      const items = await financialsApi.getPromotionalItems();
+      setCatalogItems(items);
     } catch (error) {
-      console.error('Error fetching advisors', error);
+      console.error('Error saving catalog item:', error);
     } finally {
-      setLoading(false);
+      setSubmittingCatalogItem(false);
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      setLoadingAdvisors(true);
+      setLoadingGroups(true);
+      const [advData, groupData, catalogData] = await Promise.all([
+        advisorsApi.getAll(),
+        advisorGroupsApi.getAll(),
+        financialsApi.getPromotionalItems()
+      ]);
+      setAdvisors(advData);
+      setGroups(groupData);
+      setCatalogItems(catalogData);
+    } catch (error) {
+      console.error('Error fetching data', error);
+    } finally {
+      setLoadingAdvisors(false);
+      setLoadingGroups(false);
     }
   };
 
   useEffect(() => {
-    fetchAdvisors();
+    fetchData();
   }, []);
+
+  // --- Advisor Handlers ---
+  const onAdvisorSubmit = async (data: AdvisorFormValues) => {
+    setSubmittingAdvisor(true);
+    try {
+      if (editingAdvisor) {
+        await api.put(`/Advisors/${editingAdvisor.id}`, data);
+      } else {
+        await api.post('/Advisors', data);
+      }
+      advisorForm.reset();
+      setEditingAdvisor(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error saving advisor:', error);
+    } finally {
+      setSubmittingAdvisor(false);
+    }
+  };
+
+  const handleEditAdvisor = (advisor: Advisor) => {
+    setEditingAdvisor(advisor);
+    advisorForm.setValue('name', advisor.name);
+    advisorForm.setValue('email', advisor.email);
+    advisorForm.setValue('code', advisor.code);
+    advisorForm.setValue('phoneNumber', advisor.phoneNumber);
+    advisorForm.setValue('commissionPercentage1stYear', advisor.commissionPercentage1stYear);
+    advisorForm.setValue('commissionPercentage2ndYear', advisor.commissionPercentage2ndYear);
+  };
+
+  // --- Group Handlers ---
+  const onGroupSubmit = async (data: GroupFormValues) => {
+    setSubmittingGroup(true);
+    try {
+      if (editingGroup) {
+        await advisorGroupsApi.update(editingGroup.id, data);
+      } else {
+        await advisorGroupsApi.create(data);
+      }
+      groupForm.reset();
+      setEditingGroup(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error saving group:', error);
+    } finally {
+      setSubmittingGroup(false);
+    }
+  };
+
+  const handleEditGroup = (group: AdvisorGroup) => {
+    setEditingGroup(group);
+    groupForm.setValue('name', group.name);
+    groupForm.setValue('description', group.description);
+    groupForm.setValue('memberIds', group.memberIds);
+  };
+
+  const handleDeleteGroup = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this group?')) return;
+    try {
+      await advisorGroupsApi.delete(id);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting group:', error);
+    }
+  };
 
   const handleShowInsights = async (advisor: Advisor) => {
     setSelectedAdvisor(advisor);
@@ -72,42 +222,56 @@ const AdvisorsPage: React.FC = () => {
     }
   };
 
-  const onSubmit = async (data: AdvisorFormValues) => {
-    setSubmitting(true);
+  const handleOpenLedger = async (target: { type: 'advisor' | 'group', id: number, name: string }) => {
+    setLedgerTarget(target);
+    setShowLedgerModal(true);
+    setLoadingAdjustments(true);
     try {
-      if (editingAdvisor) {
-        await api.put(`/Advisors/${editingAdvisor.id}`, data);
-      } else {
-        await api.post('/Advisors', data);
-      }
-      reset();
-      setEditingAdvisor(null);
-      fetchAdvisors();
+      const [items, adjustments] = await Promise.all([
+        financialsApi.getPromotionalItems(),
+        financialsApi.getOutstandingAdjustments(target.type === 'advisor' ? { advisorId: target.id } : { groupId: target.id })
+      ]);
+      setCatalogItems(items);
+      setOutstandingAdjustments(adjustments);
     } catch (error) {
-      console.error('Error saving advisor:', error);
+      console.error('Error loading ledger:', error);
     } finally {
-      setSubmitting(false);
+      setLoadingAdjustments(false);
     }
   };
 
-  const handleEdit = (advisor: Advisor) => {
-    setEditingAdvisor(advisor);
-    setValue('name', advisor.name);
-    setValue('code', advisor.code);
-    setValue('phoneNumber', advisor.phoneNumber);
-  };
+  // Watch for promotional item selection to auto-fill amount
+  const selectedPromoId = adjustmentForm.watch('promotionalItemId');
+  useEffect(() => {
+    if (selectedPromoId) {
+      const item = catalogItems.find(i => i.id === selectedPromoId);
+      if (item) {
+        adjustmentForm.setValue('totalAmount', item.price);
+        adjustmentForm.setValue('description', `Catalog: ${item.name}`);
+      }
+    }
+  }, [selectedPromoId, catalogItems]);
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this advisor?')) return;
+  const onAdjustmentSubmit = async (data: any) => {
+    if (!ledgerTarget) return;
+    setSubmittingAdjustment(true);
     try {
-      await api.delete(`/Advisors/${id}`);
-      fetchAdvisors();
+      await financialsApi.createAdjustment({
+        ...data,
+        advisorId: ledgerTarget.type === 'advisor' ? ledgerTarget.id : undefined,
+        advisorGroupId: ledgerTarget.type === 'group' ? ledgerTarget.id : undefined
+      });
+      adjustmentForm.reset();
+      const adjustments = await financialsApi.getOutstandingAdjustments(ledgerTarget.type === 'advisor' ? { advisorId: ledgerTarget.id } : { groupId: ledgerTarget.id });
+      setOutstandingAdjustments(adjustments);
     } catch (error) {
-      console.error('Error deleting advisor:', error);
+      console.error('Error creating adjustment:', error);
+    } finally {
+      setSubmittingAdjustment(false);
     }
   };
 
-  const columns: Column<Advisor>[] = [
+  const advisorColumns: Column<Advisor>[] = [
     {
       header: 'Profile',
       accessor: (advisor) => (
@@ -118,109 +282,473 @@ const AdvisorsPage: React.FC = () => {
       )
     },
     {
-      header: 'Phone Number',
+      header: 'Payout Rates',
       accessor: (advisor) => (
-        <div className="flex items-center gap-2 text-slate-300">
-          <Phone className="w-3 h-3 text-slate-500" />
-          {advisor.phoneNumber}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-blue-400 text-xs font-bold">
+            <span className="text-[10px] text-slate-500 font-normal uppercase">1st Yr:</span>
+            {advisor.commissionPercentage1stYear}%
+          </div>
+          <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+            <span className="text-[10px] text-slate-500 font-normal uppercase">2nd Yr:</span>
+            {advisor.commissionPercentage2ndYear}%
+          </div>
+        </div>
+      )
+    },
+    {
+      header: 'Contact',
+      accessor: (advisor) => (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-slate-300 text-xs">
+            <Mail className="w-3 h-3 text-slate-500" />
+            {advisor.email}
+          </div>
+          <div className="flex items-center gap-2 text-slate-300 text-xs">
+            <Phone className="w-3 h-3 text-slate-500" />
+            {advisor.phoneNumber}
+          </div>
         </div>
       )
     }
   ];
 
-  const actions = [
+  const groupColumns: Column<AdvisorGroup>[] = [
     {
-      icon: <BarChart3 className="w-4 h-4" />,
-      label: 'Insights',
-      onClick: handleShowInsights,
-      className: 'text-purple-400 hover:bg-purple-400/10'
+      header: 'Team Name',
+      accessor: (group) => (
+        <div>
+          <div className="font-bold text-white">{group.name}</div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">{group.description || 'No description'}</div>
+        </div>
+      )
     },
     {
-      icon: <Pencil className="w-4 h-4" />,
-      label: 'Edit',
-      onClick: handleEdit,
-      className: 'text-slate-400 hover:text-blue-400 hover:bg-blue-400/10'
-    },
-    {
-      icon: <Trash2 className="w-4 h-4" />,
-      label: 'Delete',
-      onClick: (advisor: Advisor) => handleDelete(advisor.id),
-      className: 'text-slate-400 hover:text-red-400 hover:bg-red-400/10'
+      header: 'Members',
+      accessor: (group) => (
+        <div className="flex -space-x-2 overflow-hidden">
+          {group.members?.map((m) => (
+            <div 
+              key={m.id} 
+              className="inline-block h-8 w-8 rounded-full ring-2 ring-slate-900 bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white shadow-lg"
+              title={m.name}
+            >
+              {m.name.charAt(0)}
+            </div>
+          ))}
+          {(!group.members || group.members.length === 0) && <span className="text-slate-600 text-xs italic">No members</span>}
+        </div>
+      )
     }
+  ];
+
+  const advisorActions = [
+    { icon: <Wallet className="w-4 h-4" />, label: 'Ledger', onClick: (a: Advisor) => handleOpenLedger({ type: 'advisor', id: a.id, name: a.name }), className: 'text-emerald-400 hover:bg-emerald-400/10' },
+    { icon: <BarChart3 className="w-4 h-4" />, label: 'Insights', onClick: handleShowInsights, className: 'text-purple-400 hover:bg-purple-400/10' },
+    { icon: <Receipt className="w-4 h-4" />, label: 'Pay Slips', onClick: (a: Advisor) => navigate(`/payslips/${a.id}`), className: 'text-blue-400 hover:bg-blue-400/10' },
+    { icon: <Pencil className="w-4 h-4" />, label: 'Edit', onClick: handleEditAdvisor, className: 'text-slate-400 hover:text-blue-400 hover:bg-blue-400/10' },
+    { icon: <Trash2 className="w-4 h-4" />, label: 'Delete', onClick: (a: Advisor) => {}, className: 'text-slate-400 hover:text-red-400 hover:bg-red-400/10' }
+  ];
+
+  const groupActions = [
+    { icon: <Wallet className="w-4 h-4" />, label: 'Team Ledger', onClick: (g: AdvisorGroup) => handleOpenLedger({ type: 'group', id: g.id, name: g.name }), className: 'text-emerald-400 hover:bg-emerald-400/10' },
+    { icon: <Pencil className="w-4 h-4" />, label: 'Edit Team', onClick: handleEditGroup, className: 'text-slate-400 hover:text-blue-400 hover:bg-blue-400/10' },
+    { icon: <Trash2 className="w-4 h-4" />, label: 'Disband', onClick: (g: AdvisorGroup) => handleDeleteGroup(g.id), className: 'text-slate-400 hover:text-red-400 hover:bg-red-400/10' }
   ];
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Financial Advisors</h1>
-        <p className="text-slate-400 mt-2">Manage advisor profiles and track their portfolio performance.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">Organization</h1>
+          <p className="text-slate-400 mt-2">Manage individual advisors and collaborative teams.</p>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex bg-slate-800/50 p-1.5 rounded-2xl border border-slate-700/50">
+          <button 
+            onClick={() => setActiveTab('advisors')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'advisors' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:text-white'}`}
+          >
+            <User className="w-4 h-4" /> Individual Advisors
+          </button>
+          <button 
+            onClick={() => setActiveTab('groups')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'groups' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:text-white'}`}
+          >
+            <Users className="w-4 h-4" /> Teams & Groups
+          </button>
+          <button 
+            onClick={() => setActiveTab('catalog')}
+            className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'catalog' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:text-white'}`}
+          >
+            <Package className="w-4 h-4" /> Promotional Catalog
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
         {/* Form Column */}
         <div className="xl:col-span-4">
           <div className="bg-slate-800/40 border border-slate-700/50 rounded-3xl p-8 sticky top-8">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="bg-blue-600/20 p-2 rounded-lg">
-                <UserPlus className="w-6 h-6 text-blue-500" />
-              </div>
-              <h2 className="text-xl font-bold text-white">
-                {editingAdvisor ? 'Edit Advisor' : 'Register Advisor'}
-              </h2>
-            </div>
+            {activeTab === 'advisors' ? (
+              <>
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="bg-blue-600/20 p-2 rounded-lg">
+                    <UserPlus className="w-6 h-6 text-blue-500" />
+                  </div>
+                  <h2 className="text-xl font-bold text-white">{editingAdvisor ? 'Edit Advisor' : 'Register Advisor'}</h2>
+                </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-300">Full Name</label>
-                <input {...register('name')} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
-                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
-              </div>
+                <form onSubmit={advisorForm.handleSubmit(onAdvisorSubmit)} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Full Name</label>
+                    <input {...advisorForm.register('name')} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
+                    {advisorForm.formState.errors.name && <p className="text-red-500 text-xs mt-1">{advisorForm.formState.errors.name.message}</p>}
+                  </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-300">Advisor Code</label>
-                <input {...register('code')} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
-                {errors.code && <p className="text-red-500 text-xs mt-1">{errors.code.message}</p>}
-              </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Email Address</label>
+                    <input {...advisorForm.register('email')} type="email" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
+                    {advisorForm.formState.errors.email && <p className="text-red-500 text-xs mt-1">{advisorForm.formState.errors.email.message}</p>}
+                  </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-300">Phone Number</label>
-                <input {...register('phoneNumber')} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
-                {errors.phoneNumber && <p className="text-red-500 text-xs mt-1">{errors.phoneNumber.message}</p>}
-              </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">Advisor Code</label>
+                      <input {...advisorForm.register('code')} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
+                      {advisorForm.formState.errors.code && <p className="text-red-500 text-xs mt-1">{advisorForm.formState.errors.code.message}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">Phone Number</label>
+                      <input {...advisorForm.register('phoneNumber')} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
+                      {advisorForm.formState.errors.phoneNumber && <p className="text-red-500 text-xs mt-1">{advisorForm.formState.errors.phoneNumber.message}</p>}
+                    </div>
+                  </div>
 
-              <div className="flex gap-3 pt-6">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 active:scale-[0.98]"
-                >
-                  {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : editingAdvisor ? 'Update Advisor' : 'Register Advisor'}
-                </button>
-                {editingAdvisor && (
-                  <button
-                    type="button"
-                    onClick={() => { setEditingAdvisor(null); reset(); }}
-                    className="px-6 bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 rounded-xl transition-all"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
+                  <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 space-y-4">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Percent className="w-3 h-3" /> Payout Configurations</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">1st Year %</label>
+                        <input {...advisorForm.register('commissionPercentage1stYear')} type="number" step="0.1" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">2nd Year %</label>
+                        <input {...advisorForm.register('commissionPercentage2ndYear')} type="number" step="0.1" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-6">
+                    <button type="submit" disabled={submittingAdvisor} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
+                      {submittingAdvisor ? <Loader2 className="w-5 h-5 animate-spin" /> : editingAdvisor ? 'Update Advisor' : 'Register Advisor'}
+                    </button>
+                    {editingAdvisor && <button type="button" onClick={() => { setEditingAdvisor(null); advisorForm.reset(); }} className="px-6 bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 rounded-xl transition-all">Cancel</button>}
+                  </div>
+                </form>
+              </>
+            ) : activeTab === 'groups' ? (
+              <>
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="bg-purple-600/20 p-2 rounded-lg">
+                    <Users className="w-6 h-6 text-purple-500" />
+                  </div>
+                  <h2 className="text-xl font-bold text-white">{editingGroup ? 'Edit Team' : 'Create Team'}</h2>
+                </div>
+
+                <form onSubmit={groupForm.handleSubmit(onGroupSubmit)} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Team Name</label>
+                    <input {...groupForm.register('name')} placeholder="e.g., Alpha Group" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500/50 outline-none" />
+                    {groupForm.formState.errors.name && <p className="text-red-500 text-xs mt-1">{groupForm.formState.errors.name.message}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Description</label>
+                    <textarea {...groupForm.register('description')} rows={2} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500/50 outline-none resize-none" />
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="text-sm font-semibold text-slate-300">Select Team Members</label>
+                    <div className="max-h-[300px] overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                      {advisors.map(advisor => {
+                        const isSelected = groupForm.watch('memberIds').includes(advisor.id);
+                        return (
+                          <div 
+                            key={advisor.id} 
+                            onClick={() => {
+                              const currentIds = groupForm.getValues('memberIds');
+                              if (isSelected) {
+                                groupForm.setValue('memberIds', currentIds.filter(id => id !== advisor.id));
+                              } else {
+                                groupForm.setValue('memberIds', [...currentIds, advisor.id]);
+                              }
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${isSelected ? 'bg-purple-600/10 border-purple-500/50 text-white' : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black ${isSelected ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-500'}`}>{advisor.name.charAt(0)}</div>
+                              <div>
+                                <p className="text-xs font-bold leading-none">{advisor.name}</p>
+                                <p className="text-[9px] mt-1 font-mono uppercase opacity-50">{advisor.code}</p>
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-purple-500" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {groupForm.formState.errors.memberIds && <p className="text-red-500 text-xs mt-1">{groupForm.formState.errors.memberIds.message}</p>}
+                  </div>
+
+                  <div className="flex gap-3 pt-6">
+                    <button type="submit" disabled={submittingGroup} className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2">
+                      {submittingGroup ? <Loader2 className="w-5 h-5 animate-spin" /> : editingGroup ? 'Update Team' : 'Create Team'}
+                    </button>
+                    {editingGroup && <button type="button" onClick={() => { setEditingGroup(null); groupForm.reset(); }} className="px-6 bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 rounded-xl transition-all">Cancel</button>}
+                  </div>
+                </form>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="bg-emerald-600/20 p-2 rounded-lg">
+                    <Package className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <h2 className="text-xl font-bold text-white">Add Catalog Item</h2>
+                </div>
+
+                <form onSubmit={catalogForm.handleSubmit(onCatalogSubmit)} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Item Name</label>
+                    <input {...catalogForm.register('name')} placeholder="e.g., Blazer - Small" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-emerald-500/50 outline-none" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Price (R)</label>
+                    <input {...catalogForm.register('price')} type="number" step="0.01" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-emerald-500/50 outline-none" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">Category</label>
+                      <select {...catalogForm.register('category')} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-emerald-500/50 outline-none">
+                        <option value="Uniform">Uniform</option>
+                        <option value="Equipment">Equipment</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">Sizes</label>
+                      <input {...catalogForm.register('sizes')} placeholder="S, M, L, XL" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-emerald-500/50 outline-none" />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-6">
+                    <button type="submit" disabled={submittingCatalogItem} className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
+                      {submittingCatalogItem ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Add to Catalog'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
 
         {/* List Column */}
         <div className="xl:col-span-8">
-          <DataTable
-            data={advisors}
-            columns={columns}
-            actions={actions}
-            loading={loading}
-            searchPlaceholder="Search advisors by name or code..."
-          />
+          {activeTab === 'advisors' ? (
+            <DataTable data={advisors} columns={advisorColumns} actions={advisorActions} loading={loadingAdvisors} searchPlaceholder="Search advisors..." />
+          ) : activeTab === 'groups' ? (
+            <DataTable data={groups} columns={groupColumns} actions={groupActions} loading={loadingGroups} searchPlaceholder="Search teams..." />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {catalogItems.map((item) => (
+                <div key={item.id} className="bg-slate-800/40 border border-slate-700/50 p-6 rounded-3xl hover:border-emerald-500/50 transition-all group">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="bg-emerald-500/10 p-3 rounded-2xl group-hover:bg-emerald-500/20 transition-colors">
+                      <Package className="w-6 h-6 text-emerald-500" />
+                    </div>
+                    <span className="text-[10px] font-black px-2 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-500 uppercase">
+                      {item.category}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-1">{item.name}</h3>
+                  <p className="text-2xl font-black text-white">R {item.price.toLocaleString()}</p>
+                  {item.sizes && (
+                    <p className="text-[10px] text-slate-500 font-bold uppercase mt-2 tracking-widest">
+                      Available Sizes: {item.sizes}
+                    </p>
+                  )}
+                </div>
+              ))}
+              {catalogItems.length === 0 && (
+                <div className="md:col-span-2 py-20 text-center opacity-30">
+                  <Package className="w-16 h-16 mx-auto mb-4" />
+                  <p className="font-black uppercase tracking-widest">No items in catalog</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Ledger / Adjustments Modal */}
+      {showLedgerModal && ledgerTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="bg-slate-900 border border-slate-700/50 rounded-[2.5rem] w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center">
+                  <Wallet className="w-6 h-6 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white">{ledgerTarget.name} - Account Ledger</h3>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Assign Debts, Advances & Items</p>
+                </div>
+              </div>
+              <button onClick={() => setShowLedgerModal(false)} className="text-slate-500 hover:text-white transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+              {/* Form Side */}
+              <div className="w-full md:w-1/2 p-6 border-r border-slate-800 overflow-y-auto custom-scrollbar">
+                <h4 className="text-xs font-black text-slate-400 uppercase mb-6 tracking-widest">New Adjustment</h4>
+                
+                <form onSubmit={adjustmentForm.handleSubmit(onAdjustmentSubmit)} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Adjustment Type</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { type: AdjustmentType.PromotionalItem, label: 'Catalog Item', icon: <Package className="w-3 h-3" /> },
+                        { type: AdjustmentType.Advance, label: 'Cash Advance', icon: <CreditCard className="w-3 h-3" />, disabled: ledgerTarget.type === 'group' },
+                        { type: AdjustmentType.Damage, label: 'Damage Fee', icon: <AlertCircle className="w-3 h-3" /> },
+                        { type: AdjustmentType.Maintenance, label: 'Maintenance', icon: <Activity className="w-3 h-3" /> },
+                        { type: AdjustmentType.EventFee, label: 'Event Fee', icon: <Calendar className="w-3 h-3" /> },
+                        { type: AdjustmentType.Other, label: 'Other', icon: <Plus className="w-3 h-3" /> },
+                      ].map((btn) => (
+                        <button
+                          key={btn.type}
+                          type="button"
+                          disabled={btn.disabled}
+                          onClick={() => {
+                            adjustmentForm.setValue('type', btn.type as any);
+                            if (btn.type !== AdjustmentType.PromotionalItem) adjustmentForm.setValue('promotionalItemId', undefined);
+                          }}
+                          className={`flex items-center gap-2 p-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${
+                            adjustmentForm.watch('type') === btn.type
+                              ? 'bg-blue-600/10 border-blue-500 text-white shadow-lg shadow-blue-500/10'
+                              : 'bg-slate-900/50 border-slate-800 text-slate-500 hover:border-slate-700 disabled:opacity-20'
+                          }`}
+                        >
+                          {btn.icon} {btn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {adjustmentForm.watch('type') === AdjustmentType.PromotionalItem && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">Select Item from Catalog</label>
+                      <select 
+                        {...adjustmentForm.register('promotionalItemId', { valueAsNumber: true })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none appearance-none"
+                      >
+                        <option value="">Choose item...</option>
+                        {catalogItems.map(item => (
+                          <option key={item.id} value={item.id}>{item.name} (R {item.price})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">Amount (R)</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        {...adjustmentForm.register('totalAmount')}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold text-lg focus:ring-2 focus:ring-blue-500/50 outline-none" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">Reference / Description</label>
+                      <input 
+                        {...adjustmentForm.register('description')}
+                        placeholder="e.g. Broken Kettle replacement" 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-blue-500/50 outline-none" 
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={submittingAdjustment}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2"
+                  >
+                    {submittingAdjustment ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+                    Confirm Adjustment
+                  </button>
+                </form>
+              </div>
+
+              {/* List Side */}
+              <div className="w-full md:w-1/2 p-6 bg-slate-900/30 overflow-y-auto custom-scrollbar">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Outstanding Debts</h4>
+                  <div className="bg-red-500/10 text-red-500 px-3 py-1 rounded-full text-[10px] font-black border border-red-500/20 uppercase tracking-tighter">
+                    Total Due: R {outstandingAdjustments.reduce((sum, a) => sum + a.remainingBalance, 0).toLocaleString()}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {loadingAdjustments ? (
+                    <div className="flex flex-col items-center justify-center py-12 gap-3 opacity-50">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <p className="text-[10px] font-black uppercase tracking-widest">Loading Records...</p>
+                    </div>
+                  ) : outstandingAdjustments.length > 0 ? (
+                    outstandingAdjustments.map(adj => (
+                      <div key={adj.id} className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-2xl flex items-center justify-between group">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 ${
+                            adj.type === AdjustmentType.Advance ? 'bg-amber-500/10 text-amber-500' :
+                            adj.type === AdjustmentType.Damage ? 'bg-red-500/10 text-red-500' :
+                            'bg-blue-500/10 text-blue-500'
+                          }`}>
+                            {adj.type === AdjustmentType.PromotionalItem ? <Package className="w-5 h-5" /> :
+                             adj.type === AdjustmentType.Advance ? <Wallet className="w-5 h-5" /> :
+                             <Activity className="w-5 h-5" />}
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-white">{adj.description}</p>
+                            <p className="text-[9px] text-slate-500 uppercase font-bold mt-0.5">{new Date(adj.dateIncurred).toLocaleDateString()} • {Object.keys(AdjustmentType)[Object.values(AdjustmentType).indexOf(adj.type)]}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-black text-white">R {adj.remainingBalance.toLocaleString()}</p>
+                          {adj.remainingBalance < adj.totalAmount && (
+                            <p className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Was R {adj.totalAmount.toLocaleString()}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 opacity-30">
+                      <p className="text-xs font-black uppercase tracking-widest">Clear Account</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Insights Modal */}
       {showInsights && selectedAdvisor && (
@@ -260,7 +788,6 @@ const AdvisorsPage: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  {/* Advisor Stats Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="bg-slate-800/30 border border-slate-700/50 p-6 rounded-3xl">
                       <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Policies</p>
@@ -286,102 +813,51 @@ const AdvisorsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Policy Grouping */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Column 1: Active & Submitted */}
                     <div className="space-y-6">
                       <h4 className="flex items-center gap-2 text-sm font-black text-slate-300 uppercase tracking-widest px-2">
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                        In-Force & Pending
+                        <CheckCircle2 className="w-4 h-4 text-green-500" /> In-Force & Pending
                       </h4>
                       <div className="space-y-4">
-                        {advisorSubmissions.filter(s => s.status !== 'Lapsed').length > 0 ? (
-                          advisorSubmissions.filter(s => s.status !== 'Lapsed').map(s => (
-                            <div key={s.id} className="bg-slate-800/20 border border-slate-700/30 p-5 rounded-2xl hover:border-slate-600 transition-colors group">
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="bg-blue-600/10 p-2 rounded-xl group-hover:bg-blue-600/20 transition-colors">
-                                    <FileText className="w-5 h-5 text-blue-500" />
-                                  </div>
-                                  <div>
-                                    <p className="text-white font-bold">{s.applicantSurname}, {s.initials}</p>
-                                    <p className="text-[10px] text-slate-500 font-mono">ID: {s.idNumber}</p>
-                                  </div>
-                                </div>
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
-                                  s.status === 'Active' 
-                                    ? 'bg-green-500/10 text-green-500 border-green-500/20' 
-                                    : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                }`}>
-                                  {s.status.toUpperCase()}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-800/50">
-                                <div className="text-slate-400 flex items-center gap-1">
-                                  <Clock className="w-3 h-3" /> {new Date(s.date).toLocaleDateString()}
-                                </div>
-                                <div className="text-white font-bold">R {s.premium.toLocaleString()} <span className="text-[9px] text-slate-500 font-normal">p/m</span></div>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-8 text-center bg-slate-800/10 border border-dashed border-slate-700/50 rounded-2xl text-slate-600 text-sm">
-                            No active policies found.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Column 2: Lapsed & Commissions */}
-                    <div className="space-y-6">
-                      <h4 className="flex items-center gap-2 text-sm font-black text-slate-300 uppercase tracking-widest px-2">
-                        <AlertCircle className="w-4 h-4 text-red-500" />
-                        Lapsed & Commissions
-                      </h4>
-                      
-                      <div className="space-y-4">
-                        {advisorSubmissions.filter(s => s.status === 'Lapsed').map(s => (
-                          <div key={s.id} className="bg-red-500/5 border border-red-500/10 p-5 rounded-2xl grayscale hover:grayscale-0 transition-all opacity-60 hover:opacity-100">
+                        {advisorSubmissions.filter(s => s.status !== 'Lapsed').map(s => (
+                          <div key={s.id} className="bg-slate-800/20 border border-slate-700/30 p-5 rounded-2xl group">
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-3">
-                                <div className="bg-red-500/10 p-2 rounded-xl">
-                                  <FileText className="w-5 h-5 text-red-500" />
+                                <div className="bg-blue-600/10 p-2 rounded-xl group-hover:bg-blue-600/20 transition-colors">
+                                  <FileText className="w-5 h-5 text-blue-500" />
                                 </div>
                                 <div>
-                                  <p className="text-slate-300 font-bold">{s.applicantSurname}, {s.initials}</p>
-                                  <p className="text-[10px] text-slate-600 font-mono">ID: {s.idNumber}</p>
+                                  <p className="text-white font-bold">{s.applicantSurname}, {s.initials}</p>
+                                  <p className="text-[10px] text-slate-500 font-mono">ID: {s.idNumber}</p>
                                 </div>
                               </div>
-                              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">
-                                LAPSED
-                              </span>
+                              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${s.status === 'Active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>{s.status.toUpperCase()}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-800/50">
+                              <div className="text-slate-400 flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(s.date).toLocaleDateString()}</div>
+                              <div className="text-white font-bold">R {s.premium.toLocaleString()} <span className="text-[9px] text-slate-500 font-normal">p/m</span></div>
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
 
-                        {/* Recent Earnings Mini-List */}
-                        <div className="mt-8 space-y-4">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Commission History</p>
-                          {advisorCommissions.slice(0, 5).map(c => (
-                            <div key={c.id} className="flex items-center justify-between p-4 bg-slate-800/10 border border-slate-800 rounded-2xl">
+                    <div className="space-y-6">
+                      <h4 className="flex items-center gap-2 text-sm font-black text-slate-300 uppercase tracking-widest px-2">
+                        <AlertCircle className="w-4 h-4 text-red-500" /> Lapsed & Commissions
+                      </h4>
+                      <div className="space-y-4">
+                        {advisorSubmissions.filter(s => s.status === 'Lapsed').map(s => (
+                          <div key={s.id} className="bg-red-500/5 border border-red-500/10 p-5 rounded-2xl grayscale hover:grayscale-0 transition-all opacity-60">
+                            <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${c.isPaid ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                                  <DollarSign className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <p className="text-xs text-white font-bold">{c.applicantSurname}</p>
-                                  <p className="text-[9px] text-slate-500">{new Date(c.dateCalculated).toLocaleDateString()}</p>
-                                </div>
+                                <div className="bg-red-500/10 p-2 rounded-xl"><FileText className="w-5 h-5 text-red-500" /></div>
+                                <div><p className="text-slate-300 font-bold">{s.applicantSurname}, {s.initials}</p><p className="text-[10px] text-slate-600 font-mono">ID: {s.idNumber}</p></div>
                               </div>
-                              <div className="text-right">
-                                <p className={`text-sm font-black ${c.commissionAmount < 0 ? 'text-red-500' : 'text-blue-400'}`}>
-                                  R {c.commissionAmount.toLocaleString()}
-                                </p>
-                                <p className="text-[8px] text-slate-600 uppercase font-bold">{c.isPaid ? 'Paid' : 'Due'}</p>
-                              </div>
+                              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">LAPSED</span>
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -389,17 +865,8 @@ const AdvisorsPage: React.FC = () => {
               )}
             </div>
             
-            {/* Modal Footer */}
             <div className="p-8 bg-slate-800/30 border-t border-slate-800 flex justify-between items-center">
-              <p className="text-[10px] text-slate-500 max-w-md">
-                This dashboard shows a consolidated view of the advisor's performance based on recorded submissions and financials.
-              </p>
-              <button 
-                onClick={() => setShowInsights(false)}
-                className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-8 py-3 rounded-xl border border-slate-700/50 transition-all"
-              >
-                Close Report
-              </button>
+              <button onClick={() => setShowInsights(false)} className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-8 py-3 rounded-xl border border-slate-700/50 transition-all">Close Report</button>
             </div>
           </div>
         </div>

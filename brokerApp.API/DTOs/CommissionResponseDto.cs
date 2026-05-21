@@ -4,6 +4,7 @@ public class CommissionResponseDto
 {
     public int Id { get; set; }
     public int? PolicyPaymentId { get; set; }
+    public int? CommissionStatementId { get; set; }
     public decimal AmountReceived { get; set; }
     public string Reference { get; set; } = string.Empty;
     public int AdvisorId { get; set; }

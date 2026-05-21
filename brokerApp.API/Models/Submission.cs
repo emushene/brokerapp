@@ -28,6 +28,9 @@ public class Submission
 
     public ICollection<Advisor> Advisors { get; set; } = new List<Advisor>();
 
+    public int? AdvisorGroupId { get; set; }
+    public AdvisorGroup? AdvisorGroup { get; set; }
+
     public ICollection<SubmissionDocument> Documents { get; set; } = new List<SubmissionDocument>();
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

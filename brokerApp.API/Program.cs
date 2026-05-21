@@ -31,6 +31,9 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 // AutoMapper
 builder.Services.AddAutoMapper(typeof(Program));
 
+// Caching
+builder.Services.AddMemoryCache();
+
 // IHttpContextAccessor (for Service layer identity)
 builder.Services.AddHttpContextAccessor();
 
@@ -41,6 +44,8 @@ builder.Services.AddScoped<IFinancialsService, FinancialsService>();
 builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<IFileStorageService, GoogleCloudStorageService>();
 builder.Services.AddScoped<IGoogleDriveSyncService, GoogleDriveSyncService>();
+builder.Services.AddScoped<IGoogleSheetsService, GoogleSheetsService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddHostedService<GoogleDriveSyncWorker>();
 
 // --------------------
@@ -123,8 +128,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-app.UseHttpsRedirection();
+else 
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();   // ✔ Firebase validation
 app.UseAuthorization();    // ✔ [Authorize] enforcement

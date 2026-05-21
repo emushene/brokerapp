@@ -8,11 +8,14 @@ public class CommissionStatement
     public int Id { get; set; }
     public string FileName { get; set; } = string.Empty;
     public string? FileUrl { get; set; }
+    public string? GoogleSheetUrl { get; set; }
     public DateTime StatementDate { get; set; }
     public DateTime UploadDate { get; set; } = DateTime.UtcNow;
     public decimal TotalCommission { get; set; }
     public int TotalRows { get; set; }
     public int MatchedRows { get; set; }
+    public string Status { get; set; } = "Draft"; // Draft, Concluded, Emailed
+    public DateTime? EmailSentDate { get; set; }
     
     public ICollection<StatementItem> Items { get; set; } = new List<StatementItem>();
     public ICollection<MovementItem> MovementItems { get; set; } = new List<MovementItem>();
@@ -39,6 +42,7 @@ public class StatementItem
     public string? FileUrl { get; set; }
     public string? GoogleDriveLink { get; set; }
     public bool IsMatched => MatchedSubmissionId.HasValue;
+    public bool IsConfirmed { get; set; }
 }
 
 public class MovementItem
@@ -61,4 +65,5 @@ public class MovementItem
     public string? FileUrl { get; set; }
     public string? GoogleDriveLink { get; set; }
     public bool IsMatched => MatchedSubmissionId.HasValue;
+    public bool IsConfirmed { get; set; }
 }

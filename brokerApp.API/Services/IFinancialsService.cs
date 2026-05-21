@@ -1,4 +1,5 @@
 using brokerApp.API.DTOs;
+using brokerApp.API.Models;
 
 namespace brokerApp.API.Services;
 
@@ -8,4 +9,14 @@ public interface IFinancialsService
     Task<List<CommissionResponseDto>> GetCommissionsAsync(int? advisorId = null);
     Task MarkCommissionAsPaidAsync(int commissionId, string payoutReference);
     Task HandleLapseAsync(int submissionId);
+    Task ManualLinkStatementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null);
+    Task ManualLinkMovementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null);
+    Task ConcludeStatementAsync(int statementId);
+
+    // Ledger & Promotional Items
+    Task<IEnumerable<PromotionalItem>> GetPromotionalItemsAsync();
+    Task<PromotionalItem> AddPromotionalItemAsync(PromotionalItem item);
+    Task<AccountAdjustmentDto> AddAdjustmentAsync(AccountAdjustment adjustment);
+    Task<IEnumerable<AccountAdjustmentDto>> GetOutstandingAdjustmentsAsync(int? advisorId = null, int? groupId = null);
+    Task ApplyDeductionAsync(int adjustmentId, decimal amount, int statementId);
 }

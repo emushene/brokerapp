@@ -14,13 +14,24 @@ public class MappingProfile : Profile
         CreateMap<Submission, SubmissionResponseDto>()
             .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
             .ForMember(dest => dest.Method, opt => opt.MapFrom(src => src.Method.ToString()))
-            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()));
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.AdvisorGroupName, opt => opt.MapFrom(src => src.AdvisorGroup != null ? src.AdvisorGroup.Name : null));
             
         CreateMap<Advisor, AdvisorDto>();
+        CreateMap<AdvisorDto, Advisor>();
+
+        CreateMap<AdvisorGroup, AdvisorGroupDto>()
+            .ForMember(dest => dest.MemberIds, opt => opt.MapFrom(src => src.Members.Select(m => m.Id)));
 
         CreateMap<SubmissionDocument, SubmissionDocumentDto>();
 
-        CreateMap<PolicyPaymentCreateDto, PolicyPayment>();
+        CreateMap<AccountAdjustment, AccountAdjustmentDto>()
+            .ForMember(dest => dest.Type, opt => opt.MapFrom(src => (int)src.Type))
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => (int)src.Status))
+            .ForMember(dest => dest.AdvisorName, opt => opt.MapFrom(src => src.Advisor != null ? src.Advisor.Name : null))
+            .ForMember(dest => dest.AdvisorGroupName, opt => opt.MapFrom(src => src.AdvisorGroup != null ? src.AdvisorGroup.Name : null))
+            .ForMember(dest => dest.PromotionalItemName, opt => opt.MapFrom(src => src.PromotionalItem != null ? src.PromotionalItem.Name : null));
+
         CreateMap<AdvisorCommission, CommissionResponseDto>()
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
             .ForMember(dest => dest.PolicyPaymentId, opt => opt.MapFrom(src => src.PolicyPaymentId))
@@ -30,8 +41,8 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.AmountReceived, opt => opt.MapFrom(src => src.PolicyPayment != null ? src.PolicyPayment.AmountReceived : 0))
             .ForMember(dest => dest.Reference, opt => opt.MapFrom(src => src.PolicyPayment != null ? src.PolicyPayment.Reference : src.PayoutReference))
             .ForMember(dest => dest.AdvisorName, opt => opt.MapFrom(src => src.Advisor.Name))
-            .ForMember(dest => dest.ApplicantSurname, opt => opt.MapFrom(src => src.Submission.ApplicantSurname))
-            .ForMember(dest => dest.ApplicantInitials, opt => opt.MapFrom(src => src.Submission.Initials))
+            .ForMember(dest => dest.ApplicantSurname, opt => opt.MapFrom(src => src.Submission != null ? src.Submission.ApplicantSurname : ""))
+            .ForMember(dest => dest.ApplicantInitials, opt => opt.MapFrom(src => src.Submission != null ? src.Submission.Initials : ""))
             .ForMember(dest => dest.IsPaid, opt => opt.MapFrom(src => src.IsPaid))
             .ForMember(dest => dest.DatePaid, opt => opt.MapFrom(src => src.DatePaid))
             .ForMember(dest => dest.PayoutReference, opt => opt.MapFrom(src => src.PayoutReference))

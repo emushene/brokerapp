@@ -2,6 +2,8 @@ using AutoMapper;
 using brokerApp.API.DTOs;
 using brokerApp.API.Models;
 using brokerApp.API.Repositories;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Primitives;
 using System.Security.Claims;
 
 namespace brokerApp.API.Services;
@@ -13,19 +15,24 @@ public class SubmissionService : ISubmissionService
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IFileStorageService _fileStorageService;
     private readonly IConfiguration _configuration;
+    private readonly IMemoryCache _cache;
+    private readonly string _cacheKeyPrefix = "Submissions_";
+    private static CancellationTokenSource _resetCacheToken = new CancellationTokenSource();
 
     public SubmissionService(
         ISubmissionRepository repository,
         IMapper mapper,
         IHttpContextAccessor httpContextAccessor,
         IFileStorageService fileStorageService,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IMemoryCache cache)
     {
         _repository = repository;
         _mapper = mapper;
         _httpContextAccessor = httpContextAccessor;
         _fileStorageService = fileStorageService;
         _configuration = configuration;
+        _cache = cache;
     }
 
     private string GetFirebaseUserId()
@@ -49,6 +56,16 @@ public class SubmissionService : ISubmissionService
         return string.Join("-", names);
     }
 
+    private void InvalidateCache()
+    {
+        if (!_resetCacheToken.IsCancellationRequested && _resetCacheToken.Token.CanBeCanceled)
+        {
+            _resetCacheToken.Cancel();
+            _resetCacheToken.Dispose();
+        }
+        _resetCacheToken = new CancellationTokenSource();
+    }
+
     public async Task<SubmissionResponseDto> CreateSubmissionAsync(SubmissionCreateDto dto)
     {
         var submission = _mapper.Map<Submission>(dto);
@@ -59,11 +76,23 @@ public class SubmissionService : ISubmissionService
 
         var firebaseUserId = GetFirebaseUserId();
         
-        // Get advisors from provided IDs
-        var advisors = await _repository.GetAdvisorsByIdsAsync(dto.AdvisorIds);
-        submission.Advisors = advisors.ToList();
+        // Get advisors from provided IDs or Group
+        if (dto.AdvisorGroupId.HasValue)
+        {
+            var group = await _repository.GetAdvisorGroupByIdAsync(dto.AdvisorGroupId.Value);
+            if (group != null)
+            {
+                submission.AdvisorGroupId = group.Id;
+                submission.Advisors = group.Members.ToList();
+            }
+        }
+        else if (dto.AdvisorIds != null && dto.AdvisorIds.Any())
+        {
+            var advisors = await _repository.GetAdvisorsByIdsAsync(dto.AdvisorIds);
+            submission.Advisors = advisors.ToList();
+        }
 
-        // Ensure the logged-in advisor is also linked
+        // Ensure the logged-in advisor is also linked if they're not already (for individual tracking)
         var currentAdvisor = await _repository.GetAdvisorByFirebaseIdAsync(firebaseUserId);
         if (currentAdvisor != null && !submission.Advisors.Any(a => a.FirebaseId == firebaseUserId))
         {
@@ -95,27 +124,69 @@ public class SubmissionService : ISubmissionService
             await _repository.SaveChangesAsync();
         }
 
+        InvalidateCache();
         return _mapper.Map<SubmissionResponseDto>(submission);
     }
 
-    public async Task<IEnumerable<SubmissionResponseDto>> GetAdvisorSubmissionsAsync()
+    public async Task<IEnumerable<SubmissionResponseDto>> GetAdvisorSubmissionsAsync(int page = 1, int pageSize = 50)
     {
         var advisorId = GetFirebaseUserId();
-        var submissions = await _repository.GetByAdvisorIdAsync(advisorId);
+        var cacheKey = $"{_cacheKeyPrefix}Advisor_{advisorId}_{page}_{pageSize}";
+
+        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        {
+            var submissions = await _repository.GetByAdvisorIdAsync(advisorId, page, pageSize);
+            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+
+            var cacheOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(5))
+                .SetAbsoluteExpiration(TimeSpan.FromHours(1))
+                .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
+
+            _cache.Set(cacheKey, result, cacheOptions);
+        }
         
-        return _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+        return result ?? Enumerable.Empty<SubmissionResponseDto>();
     }
 
-    public async Task<IEnumerable<SubmissionResponseDto>> GetAllSubmissionsAsync()
+    public async Task<IEnumerable<SubmissionResponseDto>> GetAllSubmissionsAsync(int page = 1, int pageSize = 50)
     {
-        var submissions = await _repository.GetAllAsync();
-        return _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+        var cacheKey = $"{_cacheKeyPrefix}All_{page}_{pageSize}";
+
+        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        {
+            var submissions = await _repository.GetAllAsync(page, pageSize);
+            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+
+            var cacheOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(5))
+                .SetAbsoluteExpiration(TimeSpan.FromHours(1))
+                .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
+
+            _cache.Set(cacheKey, result, cacheOptions);
+        }
+
+        return result ?? Enumerable.Empty<SubmissionResponseDto>();
     }
 
-    public async Task<IEnumerable<SubmissionResponseDto>> GetSubmissionsByAdvisorIdAsync(int advisorId)
+    public async Task<IEnumerable<SubmissionResponseDto>> GetSubmissionsByAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 50)
     {
-        var submissions = await _repository.GetByInternalAdvisorIdAsync(advisorId);
-        return _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+        var cacheKey = $"{_cacheKeyPrefix}InternalAdvisor_{advisorId}_{page}_{pageSize}";
+
+        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        {
+            var submissions = await _repository.GetByInternalAdvisorIdAsync(advisorId, page, pageSize);
+            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+
+            var cacheOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(5))
+                .SetAbsoluteExpiration(TimeSpan.FromHours(1))
+                .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
+
+            _cache.Set(cacheKey, result, cacheOptions);
+        }
+
+        return result ?? Enumerable.Empty<SubmissionResponseDto>();
     }
 
     public async Task<SubmissionResponseDto> UploadDocumentAsync(int submissionId, IFormFile file)
@@ -141,7 +212,28 @@ public class SubmissionService : ISubmissionService
         });
 
         await _repository.SaveChangesAsync();
+        InvalidateCache();
 
         return _mapper.Map<SubmissionResponseDto>(target);
+    }
+
+    public async Task<IEnumerable<SubmissionResponseDto>> SearchSubmissionsAsync(string query, int page = 1, int pageSize = 50)
+    {
+        var cacheKey = $"{_cacheKeyPrefix}Search_{query}_{page}_{pageSize}";
+
+        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        {
+            var submissions = await _repository.SearchAsync(query, page, pageSize);
+            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+
+            var cacheOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(2)) // Shorter expiration for searches
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(10))
+                .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
+
+            _cache.Set(cacheKey, result, cacheOptions);
+        }
+
+        return result ?? Enumerable.Empty<SubmissionResponseDto>();
     }
 }

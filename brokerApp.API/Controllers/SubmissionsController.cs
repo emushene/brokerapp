@@ -32,11 +32,11 @@ public class SubmissionsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisor()
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisor([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         try
         {
-            var submissions = await _submissionService.GetAdvisorSubmissionsAsync();
+            var submissions = await _submissionService.GetAdvisorSubmissionsAsync(page, pageSize);
             return Ok(submissions);
         }
         catch (UnauthorizedAccessException ex)
@@ -46,16 +46,23 @@ public class SubmissionsController : ControllerBase
     }
 
     [HttpGet("advisor/{advisorId}")]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisorId(int advisorId)
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisorId(int advisorId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
-        var submissions = await _submissionService.GetSubmissionsByAdvisorIdAsync(advisorId);
+        var submissions = await _submissionService.GetSubmissionsByAdvisorIdAsync(advisorId, page, pageSize);
         return Ok(submissions);
     }
 
     [HttpGet("all")]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetAll()
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
-        var submissions = await _submissionService.GetAllSubmissionsAsync();
+        var submissions = await _submissionService.GetAllSubmissionsAsync(page, pageSize);
+        return Ok(submissions);
+    }
+
+    [HttpGet("search")]
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    {
+        var submissions = await _submissionService.SearchSubmissionsAsync(q, page, pageSize);
         return Ok(submissions);
     }
 
