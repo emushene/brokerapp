@@ -244,7 +244,7 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpPost("statement-items/{id}/confirm")]
-    public async Task<IActionResult> ConfirmStatementItem(int id, [FromBody] List<int>? selectedAdvisorIds = null)
+    public async Task<IActionResult> ConfirmStatementItem(int id, [FromBody] ConfirmLinkDto dto)
     {
         var item = await _context.StatementItems.FindAsync(id);
         if (item == null) return NotFound();
@@ -254,7 +254,7 @@ public class FinancialsController : ControllerBase
 
         try
         {
-            await _financialsService.ManualLinkStatementItemAsync(id, item.MatchedSubmissionId.Value, selectedAdvisorIds);
+            await _financialsService.ManualLinkStatementItemAsync(id, item.MatchedSubmissionId.Value, dto.SelectedAdvisorIds, dto.AdvisorGroupId);
             return Ok(new { message = "Item confirmed and commission records generated." });
         }
         catch (Exception ex)
@@ -264,7 +264,7 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpPost("movement-items/{id}/confirm")]
-    public async Task<IActionResult> ConfirmMovementItem(int id, [FromBody] List<int>? selectedAdvisorIds = null)
+    public async Task<IActionResult> ConfirmMovementItem(int id, [FromBody] ConfirmLinkDto dto)
     {
         var item = await _context.MovementItems.FindAsync(id);
         if (item == null) return NotFound();
@@ -274,7 +274,7 @@ public class FinancialsController : ControllerBase
 
         try
         {
-            await _financialsService.ManualLinkMovementItemAsync(id, item.MatchedSubmissionId.Value, selectedAdvisorIds);
+            await _financialsService.ManualLinkMovementItemAsync(id, item.MatchedSubmissionId.Value, dto.SelectedAdvisorIds, dto.AdvisorGroupId);
             return Ok(new { message = "Movement item confirmed and records updated." });
         }
         catch (Exception ex)
@@ -288,7 +288,7 @@ public class FinancialsController : ControllerBase
     {
         try
         {
-            await _financialsService.ManualLinkStatementItemAsync(id, dto.SubmissionId, dto.SelectedAdvisorIds);
+            await _financialsService.ManualLinkStatementItemAsync(id, dto.SubmissionId, dto.SelectedAdvisorIds, dto.AdvisorGroupId);
             return Ok(new { message = "Item linked and Master Policy updated." });
         }
         catch (Exception ex)
@@ -302,7 +302,7 @@ public class FinancialsController : ControllerBase
     {
         try
         {
-            await _financialsService.ManualLinkMovementItemAsync(id, dto.SubmissionId, dto.SelectedAdvisorIds);
+            await _financialsService.ManualLinkMovementItemAsync(id, dto.SubmissionId, dto.SelectedAdvisorIds, dto.AdvisorGroupId);
             return Ok(new { message = "Movement item linked and Master Policy updated." });
         }
         catch (Exception ex)

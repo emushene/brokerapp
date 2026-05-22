@@ -1,28 +1,47 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FilePlus, TrendingUp, Users, Activity, ChevronRight } from 'lucide-react';
-import api from './lib/api';
+import { FilePlus, TrendingUp, Users, Activity, ChevronRight, RefreshCw, CheckCircle2 } from 'lucide-react';
+import api, { syncApi } from './lib/api';
 import type { Submission } from './lib/types';
 
 const Dashboard: React.FC = () => {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchSubmissions = async () => {
-      try {
-        const response = await api.get('/Submissions/all');
-        setSubmissions(response.data);
-      } catch (error) {
-        console.error('Error fetching submissions', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchSubmissions = async () => {
+    try {
+      const response = await api.get('/Submissions/all');
+      setSubmissions(response.data);
+    } catch (error) {
+      console.error('Error fetching submissions', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchSubmissions();
   }, []);
+
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      await syncApi.trigger();
+      setSyncSuccess(true);
+      // Wait a bit then refresh list
+      setTimeout(() => {
+        fetchSubmissions();
+        setSyncSuccess(false);
+      }, 3000);
+    } catch (error) {
+      console.error('Sync failed', error);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const totalPremium = submissions.reduce((sum, s) => sum + s.premium, 0);
 
@@ -61,12 +80,32 @@ const Dashboard: React.FC = () => {
         <div className="lg:col-span-2 bg-slate-800/40 border border-slate-700/50 rounded-3xl overflow-hidden">
           <div className="p-6 border-b border-slate-700/50 flex items-center justify-between">
             <h2 className="text-xl font-bold text-white">Recent Submissions</h2>
-            <button 
-              onClick={() => navigate('/submissions')}
-              className="text-sm font-semibold text-blue-500 hover:text-blue-400 flex items-center gap-1 group"
-            >
-              View All <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </button>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={handleSync}
+                disabled={syncing}
+                className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                  syncSuccess 
+                    ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20'
+                }`}
+              >
+                {syncing ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : syncSuccess ? (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                {syncing ? 'Syncing...' : syncSuccess ? 'Synced!' : 'Sync with Drive'}
+              </button>
+              <button 
+                onClick={() => navigate('/submissions')}
+                className="text-sm font-semibold text-blue-500 hover:text-blue-400 flex items-center gap-1 group"
+              >
+                View All <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
           </div>
           <div className="p-0">
             {loading ? (

@@ -134,14 +134,13 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
                                 continue;
                             }
 
-                            var existingSubmission = await dbContext.Submissions
-                                .Include(s => s.Advisors)
-                                .Include(s => s.Documents)
-                                .FirstOrDefaultAsync(s => s.IdNumber == idNum && s.Advisors.Any(a => a.Id == advisor.Id));
+                            // Rule: Treat each PDF file as its own unique policy/submission.
+                            // Check if this specific Google Drive file has already been imported.
+                            var alreadyImported = await dbContext.SubmissionDocuments.AnyAsync(d => d.StorageKey == file.Id);
 
-                            if (existingSubmission == null)
+                            if (!alreadyImported)
                             {
-                                _logger.LogInformation("Creating new submission for {IdNum} {Surname} under {Advisor}", idNum, surname, advisor.Name);
+                                _logger.LogInformation("Creating new submission for file: {FileName} ({IdNum} {Surname}) under {Advisor}", file.Name, idNum, surname, advisor.Name);
                                 var newSubmission = new Submission
                                 {
                                     IdNumber = idNum,
@@ -163,17 +162,6 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
                                 });
 
                                 dbContext.Submissions.Add(newSubmission);
-                            }
-                            else if (!existingSubmission.Documents.Any(d => d.StorageKey == file.Id))
-                            {
-                                _logger.LogInformation("Updating existing submission {IdNum} with new document {FileName}", idNum, file.Name);
-                                existingSubmission.Documents.Add(new SubmissionDocument
-                                {
-                                    FileName = file.Name,
-                                    StorageKey = file.Id,
-                                    FileUrl = file.WebViewLink,
-                                    DateModified = (file.ModifiedTimeDateTimeOffset?.UtcDateTime ?? DateTime.UtcNow).ToUniversalTime()
-                                });
                             }
                         }
                         await dbContext.SaveChangesAsync();

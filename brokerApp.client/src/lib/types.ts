@@ -95,6 +95,7 @@ export interface PolicyPaymentCreateDto {
   amountReceived: number;
   dateReceived: string;
   reference: string;
+  selectedAdvisorIds?: number[];
 }
 
 export interface Commission {
@@ -204,6 +205,7 @@ export interface PromotionalItem {
   price: number;
   category: string;
   sizes: string;
+  description?: string;
 }
 
 export interface AccountAdjustment {

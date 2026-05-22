@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { auth } from './lib/firebase';
@@ -11,9 +11,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// 2 hours in milliseconds (2 * 60 * 60 * 1000)
+const IDLE_TIMEOUT = 7200000;
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const logout = useCallback(async () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    await signOut(auth);
+  }, []);
+
+  const resetTimer = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    if (user) {
+      timeoutRef.current = setTimeout(() => {
+        console.log('User idle for 2 hours, logging out...');
+        logout();
+      }, IDLE_TIMEOUT);
+    }
+  }, [user, logout]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -24,9 +44,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const logout = async () => {
-    await signOut(auth);
-  };
+  useEffect(() => {
+    if (user) {
+      // Set initial timer
+      resetTimer();
+
+      // Listen for activity
+      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+      
+      const handleActivity = () => resetTimer();
+
+      events.forEach(event => {
+        window.addEventListener(event, handleActivity);
+      });
+
+      return () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        events.forEach(event => {
+          window.removeEventListener(event, handleActivity);
+        });
+      };
+    }
+  }, [user, resetTimer]);
 
   return (
     <AuthContext.Provider value={{ user, loading, logout }}>

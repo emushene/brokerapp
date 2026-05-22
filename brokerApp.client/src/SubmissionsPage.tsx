@@ -300,24 +300,6 @@ const SubmissionsPage: React.FC = () => {
 
   const columns: Column<Submission>[] = [
     {
-      header: 'Status',
-      accessor: (s) => (
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter border ${
-          s.status === 'Active' 
-            ? 'bg-green-500/20 text-green-400 border-green-500/30' 
-            : s.status === 'Submitted'
-            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-            : s.status === 'Lapsed'
-            ? 'bg-red-500/20 text-red-400 border-red-500/30'
-            : 'bg-slate-500/20 text-slate-400 border-slate-500/30'
-        }`}>
-          {s.status}
-        </span>
-      ),
-      sortAccessor: (s) => s.status,
-      className: 'w-24'
-    },
-    {
       header: 'Applicant',
       accessor: (s) => (
         <div>
@@ -418,6 +400,24 @@ const SubmissionsPage: React.FC = () => {
       ),
       sortAccessor: (s) => s.documents?.length || 0,
       className: 'w-40'
+    },
+    {
+      header: 'Policy Status',
+      accessor: (s) => (
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter border ${
+          s.status === 'Active' 
+            ? 'bg-green-500/20 text-green-400 border-green-500/30' 
+            : s.status === 'Submitted'
+            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+            : s.status === 'Lapsed'
+            ? 'bg-red-500/20 text-red-400 border-red-500/30'
+            : 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+        }`}>
+          {s.status}
+        </span>
+      ),
+      sortAccessor: (s) => s.status,
+      className: 'w-24 text-right'
     }
   ];
 
@@ -760,7 +760,6 @@ const SubmissionsPage: React.FC = () => {
       <DataTable
         data={submissions}
         columns={columns}
-        actions={actions}
         loading={loading}
         onSearch={handleSearch}
         searchPlaceholder="Search applicants, ID numbers, or references..."

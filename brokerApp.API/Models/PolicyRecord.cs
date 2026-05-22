@@ -23,6 +23,9 @@ public class PolicyRecord
 
     public bool IsConfirmed { get; set; } = false;
 
+    public int? AdvisorGroupId { get; set; }
+    public AdvisorGroup? AdvisorGroup { get; set; }
+
     // Many-to-many relationship with Advisors
     public ICollection<Advisor> Advisors { get; set; } = new List<Advisor>();
 }

@@ -11,7 +11,7 @@ export interface Column<T> {
 
 interface Action<T> {
   icon: React.ReactNode | ((item: T) => React.ReactNode);
-  label: string;
+  label: string | ((item: T) => string);
   onClick: (item: T) => void;
   className?: string | ((item: T) => string);
 }
@@ -206,6 +206,7 @@ export function DataTable<T extends { id: string | number }>({
                         <div className="flex justify-end gap-1">
                           {actions.map((action, i) => {
                             const icon = typeof action.icon === 'function' ? action.icon(item) : action.icon;
+                            const label = typeof action.label === 'function' ? action.label(item) : action.label;
                             const className = typeof action.className === 'function' ? action.className(item) : action.className;
                             
                             return (
@@ -213,7 +214,7 @@ export function DataTable<T extends { id: string | number }>({
                                 key={i}
                                 onClick={() => action.onClick(item)}
                                 className={`p-1.5 rounded-lg transition-all hover:bg-slate-700 ${className || 'text-slate-400 hover:text-white'}`}
-                                title={action.label}
+                                title={label}
                               >
                                 {icon}
                               </button>

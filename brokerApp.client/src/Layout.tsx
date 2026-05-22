@@ -16,12 +16,12 @@ const Layout: React.FC = () => {
   const navItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
     { label: 'Submissions', path: '/submissions', icon: FileText },
-    { label: 'Performance', path: '/performance', icon: BarChart3 },
     { label: 'Statements', path: '/financials', icon: DollarSign },
+    { label: 'Pay Slips', path: '/payslips', icon: Receipt },
     { label: 'Advances', path: '/advances', icon: Wallet },
     { label: 'Promotional Gifts', path: '/promotional-gifts', icon: Package },
-    { label: 'Pay Slips', path: '/payslips', icon: Receipt },
     { label: 'Manage Advisors', path: '/advisors', icon: Users },
+    { label: 'Performance', path: '/performance', icon: BarChart3 },
   ];
 
   return (

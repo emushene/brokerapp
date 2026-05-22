@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { DollarSign, TrendingUp, Calendar, Hash, Users, Receipt, CheckCircle, Clock, ArrowDownLeft, X, Loader2, Upload, Activity, FileText, Download, History, ChevronRight, FileSpreadsheet, AlertCircle, Filter, ExternalLink, Trash2, ShieldCheck, ShieldAlert, Search, Link, Wallet, Package, ArrowRight } from 'lucide-react';
-import { financialsApi, submissionsApi, advisorsApi } from './lib/api';
-import type { Commission, CommissionStatement, StatementItem, MovementItem, Submission, AccountAdjustment } from './lib/types';
+import { Link as RouterLink } from 'react-router-dom';
+import { DollarSign, TrendingUp, Calendar, Hash, Users, CheckCircle, X, Loader2, Upload, Activity, FileText, History, ChevronRight, FileSpreadsheet, AlertCircle, Filter, ExternalLink, Trash2, ShieldCheck, ShieldAlert, Search, Link, Wallet, Package, ArrowRight } from 'lucide-react';
+import { financialsApi, submissionsApi, advisorsApi, advisorGroupsApi } from './lib/api';
+import type { Commission, CommissionStatement, StatementItem, MovementItem, Submission, AccountAdjustment, Advisor, AdvisorGroup } from './lib/types';
 import { DataTable } from './components/DataTable';
 import type { Column } from './components/DataTable';
 
@@ -51,7 +51,8 @@ const CategoryBadge: React.FC<{ category: string }> = ({ category }) => {
 const FinancialsPage: React.FC = () => {
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [statements, setStatements] = useState<CommissionStatement[]>([]);
-  const [advisors, setAdvisors] = useState<any[]>([]);
+  const [advisors, setAdvisors] = useState<Advisor[]>([]);
+  const [groups, setGroups] = useState<AdvisorGroup[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Stats
@@ -83,6 +84,9 @@ const FinancialsPage: React.FC = () => {
   const [linkingItem, setLinkingItem] = useState<{ id: number, type: 'statement' | 'movement' } | null>(null);
   const [selectedSubmissionForLinking, setSelectedSubmissionForLinking] = useState<Submission | null>(null);
   const [presentAdvisorIds, setPresentAdvisorIds] = useState<number[]>([]);
+  const [selectedAdvisorGroupId, setSelectedAdvisorGroupId] = useState<number | null>(null);
+  const [ownerType, setOwnerType] = useState<'submission' | 'all' | 'group'>('submission');
+  const [advisorSearchQuery, setAdvisorSearchQuery] = useState('');
   
   // Confirmation for pre-matched items
   const [confirmingItem, setConfirmingItem] = useState<{ id: number, submission: Submission, type: 'statement' | 'movement' } | null>(null);
@@ -99,16 +103,18 @@ const FinancialsPage: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [commData, stmtData, adjData, advData] = await Promise.all([
+      const [commData, stmtData, adjData, advData, groupData] = await Promise.all([
         financialsApi.getCommissions(),
         financialsApi.getStatements(),
         financialsApi.getOutstandingAdjustments({}), // Global fetch for stats
-        advisorsApi.getAll()
+        advisorsApi.getAll(),
+        advisorGroupsApi.getAll()
       ]);
       setCommissions(commData);
       setStatements(stmtData);
       setGlobalAdjustments(adjData);
       setAdvisors(advData);
+      setGroups(groupData);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -186,14 +192,22 @@ const FinancialsPage: React.FC = () => {
     if (!linkingItem) return;
     try {
       setLoading(true);
+      const data = {
+        submissionId,
+        selectedAdvisorIds: ownerType === 'all' || ownerType === 'submission' ? presentAdvisorIds : [],
+        advisorGroupId: ownerType === 'group' ? selectedAdvisorGroupId : undefined
+      };
+
       if (linkingItem.type === 'statement') {
-        await financialsApi.linkStatementItem(linkingItem.id, submissionId, presentAdvisorIds);
+        await financialsApi.linkStatementItem(linkingItem.id, data.submissionId, data.selectedAdvisorIds, data.advisorGroupId || undefined);
       } else {
-        await financialsApi.linkMovementItem(linkingItem.id, submissionId, presentAdvisorIds);
+        await financialsApi.linkMovementItem(linkingItem.id, data.submissionId, data.selectedAdvisorIds, data.advisorGroupId || undefined);
       }
       setIsSearchModalOpen(false);
       setSelectedSubmissionForLinking(null);
       setPresentAdvisorIds([]);
+      setSelectedAdvisorGroupId(null);
+      setOwnerType('submission');
       if (importResult) loadStatementDetails(importResult.id);
     } catch (error) {
       console.error('Error linking submission:', error);
@@ -206,24 +220,36 @@ const FinancialsPage: React.FC = () => {
     if (!item.matchedSubmission) return;
     setConfirmingItem({ id: item.id, submission: item.matchedSubmission, type: 'statement' });
     setPresentAdvisorIds(item.matchedSubmission.advisors.map(a => a.id));
+    setSelectedAdvisorGroupId(item.matchedSubmission.advisorGroupId || null);
+    setOwnerType('submission');
   };
 
   const handleConfirmMovementItem = async (item: MovementItem) => {
     if (!item.matchedSubmission) return;
     setConfirmingItem({ id: item.id, submission: item.matchedSubmission, type: 'movement' });
     setPresentAdvisorIds(item.matchedSubmission.advisors.map(a => a.id));
+    setSelectedAdvisorGroupId(item.matchedSubmission.advisorGroupId || null);
+    setOwnerType('submission');
   };
 
   const executeConfirmation = async () => {
     if (!confirmingItem) return;
     try {
       setLoading(true);
+      const data = {
+        selectedAdvisorIds: ownerType === 'all' || ownerType === 'submission' ? presentAdvisorIds : [],
+        advisorGroupId: ownerType === 'group' ? selectedAdvisorGroupId || undefined : undefined
+      };
+
       if (confirmingItem.type === 'statement') {
-        await financialsApi.confirmStatementItem(confirmingItem.id, presentAdvisorIds);
+        await financialsApi.confirmStatementItem(confirmingItem.id, data);
       } else {
-        await financialsApi.confirmMovementItem(confirmingItem.id, presentAdvisorIds);
+        await financialsApi.confirmMovementItem(confirmingItem.id, data);
       }
       setConfirmingItem(null);
+      setPresentAdvisorIds([]);
+      setSelectedAdvisorGroupId(null);
+      setOwnerType('submission');
       if (importResult) loadStatementDetails(importResult.id);
     } catch (error) {
       console.error('Error confirming item:', error);
@@ -899,11 +925,59 @@ const FinancialsPage: React.FC = () => {
                     <div className="space-y-4">
                        <div className="flex items-center gap-2 px-2">
                           <Users className="w-4 h-4 text-purple-500" />
-                          <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest">Select Present Advisors</h4>
+                          <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest">Commission Distribution</h4>
                        </div>
+
+                       <div className="flex bg-slate-900/50 p-1 rounded-2xl">
+                          <button 
+                            onClick={() => {
+                              setOwnerType('submission');
+                              setPresentAdvisorIds(selectedSubmissionForLinking.advisors.map(a => a.id));
+                              setSelectedAdvisorGroupId(selectedSubmissionForLinking.advisorGroupId || null);
+                            }}
+                            className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${ownerType === 'submission' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                          >
+                            Current
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setOwnerType('all');
+                              setPresentAdvisorIds([]);
+                              setSelectedAdvisorGroupId(null);
+                              setAdvisorSearchQuery('');
+                            }}
+                            className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${ownerType === 'all' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                          >
+                            Change Agent
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setOwnerType('group');
+                              setPresentAdvisorIds([]);
+                              setSelectedAdvisorGroupId(null);
+                              setAdvisorSearchQuery('');
+                            }}
+                            className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${ownerType === 'group' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                          >
+                            Group
+                          </button>
+                        </div>
                        
-                       <div className="grid grid-cols-1 gap-2">
-                          {selectedSubmissionForLinking.advisors.map(advisor => {
+                       {ownerType === 'all' && (
+                          <div className="relative">
+                            <input 
+                              type="text"
+                              placeholder="Search advisor by name or code..."
+                              value={advisorSearchQuery}
+                              onChange={(e) => setAdvisorSearchQuery(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-[11px] text-white outline-none focus:ring-1 focus:ring-blue-500/50"
+                            />
+                            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
+                          </div>
+                        )}
+
+                       <div className="max-h-[300px] overflow-y-auto grid grid-cols-1 gap-2 pr-2 custom-scrollbar">
+                          {ownerType === 'submission' && selectedSubmissionForLinking.advisors.map(advisor => {
                             const isPresent = presentAdvisorIds.includes(advisor.id);
                             return (
                               <div 
@@ -932,17 +1006,67 @@ const FinancialsPage: React.FC = () => {
                               </div>
                             );
                           })}
+
+                          {ownerType === 'all' && advisors
+                            .filter(a => 
+                              a.name.toLowerCase().includes(advisorSearchQuery.toLowerCase()) || 
+                              a.code.toLowerCase().includes(advisorSearchQuery.toLowerCase())
+                            )
+                            .map(advisor => {
+                            const isPresent = presentAdvisorIds.includes(advisor.id);
+                            return (
+                              <div 
+                                key={advisor.id}
+                                onClick={() => {
+                                  if (isPresent) {
+                                    setPresentAdvisorIds(prev => prev.filter(id => id !== advisor.id));
+                                  } else {
+                                    setPresentAdvisorIds(prev => [...prev, advisor.id]);
+                                  }
+                                }}
+                                className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border ${
+                                  isPresent ? 'bg-blue-600/10 border-blue-500/30 text-white' : 'bg-slate-900/50 border-transparent text-slate-500 opacity-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black ${isPresent ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-600'}`}>
+                                     {advisor.name.charAt(0)}
+                                   </div>
+                                   <div>
+                                     <p className="text-sm font-bold">{advisor.name}</p>
+                                     <p className="text-[10px] font-mono uppercase opacity-50">{advisor.code}</p>
+                                   </div>
+                                </div>
+                                {isPresent && <ShieldCheck className="w-5 h-5 text-blue-500" />}
+                              </div>
+                            );
+                          })}
+
+                          {ownerType === 'group' && groups.map(group => {
+                            const isSelected = selectedAdvisorGroupId === group.id;
+                            return (
+                              <div 
+                                key={group.id}
+                                onClick={() => setSelectedAdvisorGroupId(group.id)}
+                                className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border ${
+                                  isSelected ? 'bg-orange-600/10 border-orange-500/30 text-white' : 'bg-slate-900/50 border-transparent text-slate-500 opacity-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black ${isSelected ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-600'}`}>
+                                     G
+                                   </div>
+                                   <div>
+                                     <p className="text-sm font-bold">{group.name}</p>
+                                     <p className="text-[10px] font-mono uppercase opacity-50">{group.members?.length || 0} Members</p>
+                                   </div>
+                                </div>
+                                {isSelected && <ShieldCheck className="w-5 h-5 text-orange-500" />}
+                              </div>
+                            );
+                          })}
                        </div>
                     </div>
-
-                    <button 
-                      onClick={() => handleLinkSubmission(selectedSubmissionForLinking.id)}
-                      disabled={loading || presentAdvisorIds.length === 0}
-                      className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2"
-                    >
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link className="w-5 h-5" />}
-                      Confirm Link & Process Commission
-                    </button>
                   </div>
                 ) : searchResults.length > 0 ? (
                   searchResults.map((sub) => (
@@ -999,6 +1123,18 @@ const FinancialsPage: React.FC = () => {
                 )}
               </div>
             </div>
+            {selectedSubmissionForLinking && (
+              <div className="p-4 border-t border-slate-800 shrink-0">
+                <button 
+                  onClick={() => handleLinkSubmission(selectedSubmissionForLinking.id)}
+                  disabled={loading || (ownerType !== 'group' && presentAdvisorIds.length === 0) || (ownerType === 'group' && !selectedAdvisorGroupId)}
+                  className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link className="w-5 h-5" />}
+                  Confirm Link & Process Commission
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1055,8 +1191,8 @@ const FinancialsPage: React.FC = () => {
 
       {confirmingItem && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-xl font-black text-white tracking-tight">Confirm Distribution</h3>
                 <p className="text-slate-500 text-[10px] font-bold uppercase mt-1 tracking-wider">Follow the Money Policy</p>
@@ -1066,8 +1202,8 @@ const FinancialsPage: React.FC = () => {
               </button>
             </div>
             
-            <div className="p-6 space-y-6">
-              <div className="bg-blue-600/5 border border-blue-500/20 p-5 rounded-3xl">
+            <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+              <div className="bg-blue-600/5 border border-blue-500/20 p-5 rounded-3xl shrink-0">
                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Policy Match</p>
                 <h4 className="text-lg font-black text-white">{confirmingItem.submission.applicantSurname}, {confirmingItem.submission.initials}</h4>
                 <p className="text-xs text-slate-500 font-mono mt-1">{confirmingItem.submission.idNumber}</p>
@@ -1075,12 +1211,59 @@ const FinancialsPage: React.FC = () => {
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
-                  <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest">Present Advisors</h4>
-                  <span className="text-[10px] text-slate-500 font-bold">{presentAdvisorIds.length} / {confirmingItem.submission.advisors.length}</span>
+                  <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest">Commission Distribution</h4>
+                </div>
+
+                <div className="flex bg-slate-800 p-1 rounded-2xl sticky top-0 z-10">
+                  <button 
+                    onClick={() => {
+                      setOwnerType('submission');
+                      setPresentAdvisorIds(confirmingItem.submission.advisors.map(a => a.id));
+                      setSelectedAdvisorGroupId(confirmingItem.submission.advisorGroupId || null);
+                    }}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${ownerType === 'submission' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Current
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setOwnerType('all');
+                      setPresentAdvisorIds([]);
+                      setSelectedAdvisorGroupId(null);
+                      setAdvisorSearchQuery('');
+                    }}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${ownerType === 'all' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Change Agent
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setOwnerType('group');
+                      setPresentAdvisorIds([]);
+                      setSelectedAdvisorGroupId(null);
+                      setAdvisorSearchQuery('');
+                    }}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${ownerType === 'group' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Group
+                  </button>
                 </div>
                 
-                <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                  {confirmingItem.submission.advisors.map(advisor => {
+                {ownerType === 'all' && (
+                  <div className="relative sticky top-[44px] z-10 bg-slate-900 py-2">
+                    <input 
+                      type="text"
+                      placeholder="Search advisor by name or code..."
+                      value={advisorSearchQuery}
+                      onChange={(e) => setAdvisorSearchQuery(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-[11px] text-white outline-none focus:ring-1 focus:ring-blue-500/50"
+                    />
+                    <Search className="absolute left-3 top-4.5 w-3.5 h-3.5 text-slate-500" />
+                  </div>
+                )}
+
+                <div className="space-y-2 pr-2">
+                  {ownerType === 'submission' && confirmingItem.submission.advisors.map(advisor => {
                     const isPresent = presentAdvisorIds.includes(advisor.id);
                     return (
                       <div 
@@ -1109,12 +1292,73 @@ const FinancialsPage: React.FC = () => {
                       </div>
                     );
                   })}
+
+                  {ownerType === 'all' && advisors
+                    .filter(a => 
+                      a.name.toLowerCase().includes(advisorSearchQuery.toLowerCase()) || 
+                      a.code.toLowerCase().includes(advisorSearchQuery.toLowerCase())
+                    )
+                    .map(advisor => {
+                    const isPresent = presentAdvisorIds.includes(advisor.id);
+                    return (
+                      <div 
+                        key={advisor.id}
+                        onClick={() => {
+                          if (isPresent) {
+                            setPresentAdvisorIds(prev => prev.filter(id => id !== advisor.id));
+                          } else {
+                            setPresentAdvisorIds(prev => [...prev, advisor.id]);
+                          }
+                        }}
+                        className={`flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all border ${
+                          isPresent ? 'bg-blue-600/10 border-blue-500/30 text-white' : 'bg-slate-900/50 border-transparent text-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                           <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black ${isPresent ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-600'}`}>
+                             {advisor.name.charAt(0)}
+                           </div>
+                           <div>
+                             <p className="text-xs font-bold">{advisor.name}</p>
+                             <p className="text-[8px] font-mono uppercase opacity-50">{advisor.code}</p>
+                           </div>
+                        </div>
+                        {isPresent && <ShieldCheck className="w-4 h-4 text-blue-500" />}
+                      </div>
+                    );
+                  })}
+
+                  {ownerType === 'group' && groups.map(group => {
+                    const isSelected = selectedAdvisorGroupId === group.id;
+                    return (
+                      <div 
+                        key={group.id}
+                        onClick={() => setSelectedAdvisorGroupId(group.id)}
+                        className={`flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all border ${
+                          isSelected ? 'bg-orange-600/10 border-orange-500/30 text-white' : 'bg-slate-900/50 border-transparent text-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                           <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black ${isSelected ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-600'}`}>
+                             G
+                           </div>
+                           <div>
+                             <p className="text-xs font-bold">{group.name}</p>
+                             <p className="text-[8px] font-mono uppercase opacity-50">{group.members?.length || 0} Members</p>
+                           </div>
+                        </div>
+                        {isSelected && <ShieldCheck className="w-4 h-4 text-orange-500" />}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
+            </div>
 
+            <div className="p-6 border-t border-slate-800 shrink-0">
               <button 
                 onClick={executeConfirmation}
-                disabled={loading || presentAdvisorIds.length === 0}
+                disabled={loading || (ownerType !== 'group' && presentAdvisorIds.length === 0) || (ownerType === 'group' && !selectedAdvisorGroupId)}
                 className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}

@@ -102,9 +102,9 @@ public class ReconciliationService : IReconciliationService
 
                 var subType = row.Cell(typeCol).Value.ToString().Trim();
                 
-                // Flexible Filtering: Use Contains instead of Equals
-                var isFirstYear = subType.Contains("First Year", StringComparison.OrdinalIgnoreCase);
-                var isSecondYear = subType.Contains("Second Year", StringComparison.OrdinalIgnoreCase);
+                // Strict Filtering: Only process First Year and Second Year Commission
+                var isFirstYear = subType.Equals("First Year Commission", StringComparison.OrdinalIgnoreCase);
+                var isSecondYear = subType.Equals("Second Year Commission", StringComparison.OrdinalIgnoreCase);
 
                 if (!isFirstYear && !isSecondYear) 
                 {
@@ -115,7 +115,7 @@ public class ReconciliationService : IReconciliationService
                 var amount = ParseDecimal(row.Cell(amountCol).Value.ToString());
                 var premium = ParseDecimal(row.Cell(premCol).Value.ToString());
                 
-                var category = isFirstYear ? "First Year" : "Second Year";
+                var category = isFirstYear ? "First Year Commission" : "Second Year Commission";
                 if (amount < 0) category = "Lapse";
 
                 var moveItem = new MovementItem
@@ -237,9 +237,9 @@ public class ReconciliationService : IReconciliationService
 
                 var subType = row.Cell(typeCol).Value.ToString().Trim();
                 
-                // Flexible Filtering: Process First Year and Second Year (including Index/Retention variants)
-                var isFirstYear = subType.Contains("First Year", StringComparison.OrdinalIgnoreCase);
-                var isSecondYear = subType.Contains("Second Year", StringComparison.OrdinalIgnoreCase);
+                // Strict Filtering: Only process First Year and Second Year Commission
+                var isFirstYear = subType.Equals("First Year Commission", StringComparison.OrdinalIgnoreCase);
+                var isSecondYear = subType.Equals("Second Year Commission", StringComparison.OrdinalIgnoreCase);
 
                 if (!isFirstYear && !isSecondYear) 
                 {
@@ -250,7 +250,7 @@ public class ReconciliationService : IReconciliationService
                 var amount = ParseDecimal(row.Cell(amountCol).Value.ToString());
                 var premium = ParseDecimal(row.Cell(premCol).Value.ToString());
                 
-                var category = isFirstYear ? "First Year" : "Second Year";
+                var category = isFirstYear ? "First Year Commission" : "Second Year Commission";
                 if (amount < 0) category = "Lapse";
 
                 var item = new StatementItem
@@ -448,8 +448,25 @@ public class ReconciliationService : IReconciliationService
     private decimal ParseDecimal(string value)
     {
         if (string.IsNullOrEmpty(value)) return 0;
-        // Remove currency symbols, spaces, and commas for parsing
-        var cleanValue = value.Replace("R", "").Replace(" ", "").Replace(",", "").Trim();
+        
+        // Remove currency symbols and all types of whitespace (including non-breaking spaces)
+        var cleanValue = value.Replace("R", "").Replace("r", "").Trim();
+        cleanValue = System.Text.RegularExpressions.Regex.Replace(cleanValue, @"\s+", "");
+
+        if (string.IsNullOrEmpty(cleanValue)) return 0;
+
+        // Handle common numeric formatting issues
+        if (cleanValue.Contains(",") && !cleanValue.Contains("."))
+        {
+            // If only a comma exists, it's likely the decimal separator (e.g., "162,80")
+            cleanValue = cleanValue.Replace(",", ".");
+        }
+        else if (cleanValue.Contains(",") && cleanValue.Contains("."))
+        {
+            // If both exist, the comma is a thousands separator (e.g., "1,234.56")
+            cleanValue = cleanValue.Replace(",", "");
+        }
+
         return decimal.TryParse(cleanValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var result) ? result : 0;
     }
 

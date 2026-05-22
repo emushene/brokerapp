@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { auth } from './firebase';
-import type { Submission, SubmissionCreateDto, PolicyPaymentCreateDto, Commission, Advisor, CommissionStatement } from './types';
+import type { Submission, SubmissionCreateDto, PolicyPaymentCreateDto, Commission, Advisor, CommissionStatement, AdvisorGroup, PromotionalItem, AccountAdjustment } from './types';
 
 const api = axios.create({
   baseURL: 'http://localhost:5137/api', // Match your actual API backend port
@@ -140,17 +140,17 @@ export const financialsApi = {
   deleteStatement: async (id: number) => {
     await api.delete(`/Financials/statements/${id}`);
   },
-  confirmStatementItem: async (id: number, selectedAdvisorIds?: number[]) => {
-    await api.post(`/Financials/statement-items/${id}/confirm`, selectedAdvisorIds);
+  confirmStatementItem: async (id: number, data: { selectedAdvisorIds?: number[], advisorGroupId?: number }) => {
+    await api.post(`/Financials/statement-items/${id}/confirm`, data);
   },
-  confirmMovementItem: async (id: number, selectedAdvisorIds?: number[]) => {
-    await api.post(`/Financials/movement-items/${id}/confirm`, selectedAdvisorIds);
+  confirmMovementItem: async (id: number, data: { selectedAdvisorIds?: number[], advisorGroupId?: number }) => {
+    await api.post(`/Financials/movement-items/${id}/confirm`, data);
   },
-  linkStatementItem: async (itemId: number, submissionId: number, selectedAdvisorIds?: number[]) => {
-    await api.post(`/Financials/statement-items/${itemId}/link`, { submissionId, selectedAdvisorIds });
+  linkStatementItem: async (itemId: number, submissionId: number, selectedAdvisorIds?: number[], advisorGroupId?: number) => {
+    await api.post(`/Financials/statement-items/${itemId}/link`, { submissionId, selectedAdvisorIds, advisorGroupId });
   },
-  linkMovementItem: async (itemId: number, submissionId: number, selectedAdvisorIds?: number[]) => {
-    await api.post(`/Financials/movement-items/${itemId}/link`, { submissionId, selectedAdvisorIds });
+  linkMovementItem: async (itemId: number, submissionId: number, selectedAdvisorIds?: number[], advisorGroupId?: number) => {
+    await api.post(`/Financials/movement-items/${itemId}/link`, { submissionId, selectedAdvisorIds, advisorGroupId });
   },
   concludeStatement: async (id: number) => {
     await api.post(`/Financials/statements/${id}/conclude`);
@@ -181,6 +181,13 @@ export const financialsApi = {
   },
   applyDeduction: async (adjustmentId: number, amount: number, statementId: number) => {
     await api.post(`/Financials/adjustments/${adjustmentId}/deduct`, { amount, statementId });
+  },
+};
+
+export const syncApi = {
+  trigger: async () => {
+    const response = await api.post('/Sync/trigger');
+    return response.data;
   },
 };
 

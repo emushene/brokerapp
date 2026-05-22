@@ -158,7 +158,7 @@ public class FinancialsService : IFinancialsService
         await _context.SaveChangesAsync();
     }
 
-    public async Task ManualLinkStatementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null)
+    public async Task ManualLinkStatementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null, int? advisorGroupId = null)
     {
         var item = await _context.StatementItems.FindAsync(itemId);
         var sub = await _context.Submissions
@@ -175,22 +175,36 @@ public class FinancialsService : IFinancialsService
 
         // Follow the Money: Determine who gets paid
         var advisorsToPay = new List<Advisor>();
+        int? effectiveGroupId = advisorGroupId;
+
         if (selectedAdvisorIds != null && selectedAdvisorIds.Any())
         {
             advisorsToPay = await _context.Advisors
                 .Where(a => selectedAdvisorIds.Contains(a.Id))
                 .ToListAsync();
         }
+        else if (advisorGroupId.HasValue)
+        {
+            var group = await _context.AdvisorGroups
+                .Include(g => g.Members)
+                .FirstOrDefaultAsync(g => g.Id == advisorGroupId.Value);
+            if (group != null)
+            {
+                advisorsToPay = group.Members.ToList();
+            }
+        }
         else
         {
+            effectiveGroupId = sub.AdvisorGroupId;
             advisorsToPay = sub.AdvisorGroupId.HasValue 
                 ? sub.AdvisorGroup!.Members.ToList() 
                 : sub.Advisors.ToList();
         }
 
-        if (sub.AdvisorGroupId.HasValue)
+        if (effectiveGroupId.HasValue)
         {
-            item.AdvisorName = $"Group: {sub.AdvisorGroup!.Name}";
+            var group = await _context.AdvisorGroups.FindAsync(effectiveGroupId.Value);
+            item.AdvisorName = $"Group: {group?.Name ?? "Unknown"}";
             if (selectedAdvisorIds != null && selectedAdvisorIds.Any())
             {
                 item.AdvisorName += $" ({string.Join(", ", advisorsToPay.Select(a => a.Name))})";
@@ -229,11 +243,11 @@ public class FinancialsService : IFinancialsService
             }
         }
 
-        await UpdateMasterPolicyAsync(item.PolicyNumber, sub, item.Amount, item.Category == "Lapse");
+        await UpdateMasterPolicyAsync(item.PolicyNumber, sub, item.Amount, item.Premium, item.Category == "Lapse", advisorsToPay, effectiveGroupId);
         await _context.SaveChangesAsync();
     }
 
-    public async Task ManualLinkMovementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null)
+    public async Task ManualLinkMovementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null, int? advisorGroupId = null)
     {
         var item = await _context.MovementItems.FindAsync(itemId);
         var sub = await _context.Submissions
@@ -250,22 +264,36 @@ public class FinancialsService : IFinancialsService
 
         // Follow the Money: Determine who gets paid
         var advisorsInvolved = new List<Advisor>();
+        int? effectiveGroupId = advisorGroupId;
+
         if (selectedAdvisorIds != null && selectedAdvisorIds.Any())
         {
             advisorsInvolved = await _context.Advisors
                 .Where(a => selectedAdvisorIds.Contains(a.Id))
                 .ToListAsync();
         }
+        else if (advisorGroupId.HasValue)
+        {
+            var group = await _context.AdvisorGroups
+                .Include(g => g.Members)
+                .FirstOrDefaultAsync(g => g.Id == advisorGroupId.Value);
+            if (group != null)
+            {
+                advisorsInvolved = group.Members.ToList();
+            }
+        }
         else
         {
+            effectiveGroupId = sub.AdvisorGroupId;
             advisorsInvolved = sub.AdvisorGroupId.HasValue 
                 ? sub.AdvisorGroup!.Members.ToList() 
                 : sub.Advisors.ToList();
         }
 
-        if (sub.AdvisorGroupId.HasValue)
+        if (effectiveGroupId.HasValue)
         {
-            item.AdvisorName = $"Group: {sub.AdvisorGroup!.Name}";
+            var group = await _context.AdvisorGroups.FindAsync(effectiveGroupId.Value);
+            item.AdvisorName = $"Group: {group?.Name ?? "Unknown"}";
             if (selectedAdvisorIds != null && selectedAdvisorIds.Any())
             {
                 item.AdvisorName += $" ({string.Join(", ", advisorsInvolved.Select(a => a.Name))})";
@@ -308,7 +336,7 @@ public class FinancialsService : IFinancialsService
             }
         }
 
-        await UpdateMasterPolicyAsync(item.PolicyNumber, sub, 0, item.Category == "Lapse");
+        await UpdateMasterPolicyAsync(item.PolicyNumber, sub, 0, item.Premium, item.Category == "Lapse", advisorsInvolved, effectiveGroupId);
         await _context.SaveChangesAsync();
     }
 
@@ -345,9 +373,37 @@ public class FinancialsService : IFinancialsService
         await _context.SaveChangesAsync();
     }
 
-    private async Task UpdateMasterPolicyAsync(string policyNumber, Submission sub, decimal amount, bool isLapse)
+    private async Task UpdateMasterPolicyAsync(string policyNumber, Submission sub, decimal amount, decimal premium, bool isLapse, List<Advisor>? effectiveAdvisors = null, int? effectiveGroupId = null)
     {
-        var master = await _context.PolicyRecords.Include(p => p.Advisors).FirstOrDefaultAsync(p => p.PolicyNumber == policyNumber);
+        var master = await _context.PolicyRecords
+            .Include(p => p.Advisors)
+            .FirstOrDefaultAsync(p => p.PolicyNumber == policyNumber);
+
+        // Always ensure the submission has the correct policy number if it was linked
+        if (string.IsNullOrEmpty(sub.PolicyNumber) || sub.PolicyNumber != policyNumber)
+        {
+            sub.PolicyNumber = policyNumber;
+        }
+
+        // Update submission premium from the statement/movement
+        if (premium > 0)
+        {
+            sub.Premium = premium;
+        }
+
+        // Update submission status based on the transaction
+        sub.Status = isLapse ? SubmissionStatus.Lapsed : SubmissionStatus.Active;
+
+        var advisorsToSync = effectiveAdvisors ?? sub.Advisors.ToList();
+        var groupIdToSync = effectiveGroupId ?? sub.AdvisorGroupId;
+
+        // Sync the Submission as well if a manual change was provided
+        if (effectiveAdvisors != null || effectiveGroupId.HasValue)
+        {
+            sub.AdvisorGroupId = groupIdToSync;
+            sub.Advisors.Clear();
+            foreach (var adv in advisorsToSync) sub.Advisors.Add(adv);
+        }
 
         if (master == null)
         {
@@ -358,11 +414,12 @@ public class FinancialsService : IFinancialsService
                 Initials = sub.Initials,
                 Premium = sub.Premium,
                 LastCommissionAmount = amount,
-                Status = isLapse ? SubmissionStatus.Lapsed : SubmissionStatus.Active,
+                Status = sub.Status,
                 LastUpdated = DateTime.UtcNow,
-                IsConfirmed = true
+                IsConfirmed = true,
+                AdvisorGroupId = groupIdToSync
             };
-            foreach (var adv in sub.Advisors) master.Advisors.Add(adv);
+            foreach (var adv in advisorsToSync) master.Advisors.Add(adv);
             _context.PolicyRecords.Add(master);
         }
         else
@@ -370,16 +427,16 @@ public class FinancialsService : IFinancialsService
             master.IsConfirmed = true;
             master.Surname = sub.ApplicantSurname;
             master.Initials = sub.Initials;
+            master.Premium = sub.Premium;
             master.LastCommissionAmount = amount > 0 ? amount : master.LastCommissionAmount;
             master.LastUpdated = DateTime.UtcNow;
-            if (isLapse) master.Status = SubmissionStatus.Lapsed;
+            master.Status = sub.Status;
+            master.AdvisorGroupId = groupIdToSync;
 
             // Sync advisors
             master.Advisors.Clear();
-            foreach (var adv in sub.Advisors) master.Advisors.Add(adv);
+            foreach (var adv in advisorsToSync) master.Advisors.Add(adv);
         }
-
-        if (isLapse) sub.Status = SubmissionStatus.Lapsed;
     }
 
     // --- Ledger & Promotional Items ---
