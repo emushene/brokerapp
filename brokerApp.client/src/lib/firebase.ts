@@ -1,16 +1,14 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
-// Replace these with your actual Firebase config from the console
+// Firebase config
 const firebaseConfig = {
-
-  apiKey: "AIzaSyC7LhlknLGXUwnkyfaJcQr1IbLa-iLVLxk",
-  authDomain: "broker-app-b3722.firebaseapp.com",
-  projectId: "broker-app-b3722",
-  storageBucket: "broker-app-b3722.firebasestorage.app",
-  messagingSenderId: "815027687386",
-  appId: "1:815027687386:web:e1b5ac4a1269cbc896bae3"
-
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
