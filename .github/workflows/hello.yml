@@ -1,6 +1,9 @@
 name: Hello CI
 
 on:
+  push:
+    branches:
+      - joska
   workflow_dispatch:
 
 jobs:
