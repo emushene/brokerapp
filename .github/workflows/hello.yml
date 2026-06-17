@@ -1,10 +1,14 @@
-name: .NET Backend CI
+name: .NET Backend CI/CD
 
 on:
   push:
     branches:
       - joska
   workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build:
@@ -21,40 +25,45 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      # 3. Restore
+      # 3. Restore dependencies
       - name: Restore dependencies
         run: dotnet restore brokerApp.API
 
-      # 4. Build
+      # 4. Build project
       - name: Build project
         run: dotnet build brokerApp.API --no-restore
 
-      # 5. Docker build
-      - name: Build Docker image
-        run: docker build -t brokerapp-api:latest -f brokerApp.API/Dockerfile .
+      # 5. Run tests (optional safe mode)
+      - name: Run tests
+        run: dotnet test brokerApp.API --no-build || true
 
-      # 6. Authenticate to GCP (WIF)
+      # 6. Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t brokerapp-api:latest -f brokerApp.API/Dockerfile .
+
+      # 7. Authenticate to GCP (WIF)
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: projects/894445865298/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-deployer@project-d4757723-0bc3-412e-b9f.iam.gserviceaccount.com
 
-      # 7. Setup GCP SDK  👈 THIS IS STEP 2 YOU ASKED ABOUT
+      # 8. Setup GCP SDK
       - name: Setup GCP SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # 8. Configure Docker for Artifact Registry
-      - name: Configure Docker
+      # 9. Configure Docker for Artifact Registry
+      - name: Configure Docker for GCP
         run: gcloud auth configure-docker africa-south1-docker.pkg.dev --quiet
 
-      # 9. Tag image
-      - name: Tag image
+      # 10. Tag Docker image
+      - name: Tag Docker image
         run: |
           docker tag brokerapp-api:latest \
           africa-south1-docker.pkg.dev/project-d4757723-0bc3-412e-b9f/sre-repo/brokerapp-api:latest
 
-      # 10. Push image
-      - name: Push image
+      # 11. Push Docker image
+      - name: Push Docker image
         run: |
           docker push africa-south1-docker.pkg.dev/project-d4757723-0bc3-412e-b9f/sre-repo/brokerapp-api:latest
