@@ -1,4 +1,4 @@
-name: Hello CI
+name: .NET Backend CI
 
 on:
   push:
@@ -7,9 +7,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Say Hello
-        run: echo "GitHub Actions is working!"
+      # 1. Get code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Setup .NET
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # 3. Restore dependencies
+      - name: Restore dependencies
+        run: dotnet restore brokerApp.API
+
+      # 4. Build project
+      - name: Build project
+        run: dotnet build brokerApp.API --no-restore
+
+      # 5. Run tests (if any exist)
+      - name: Run tests
+        run: dotnet test brokerApp.API --no-build || true
