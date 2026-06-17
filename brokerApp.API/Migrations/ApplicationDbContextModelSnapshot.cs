@@ -101,6 +101,9 @@ namespace brokerApp.API.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<decimal?>("TargetMonthlyRepayment")
+                        .HasColumnType("numeric");
+
                     b.Property<decimal>("TotalAmount")
                         .HasColumnType("numeric");
 
@@ -115,7 +118,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("PromotionalItemId");
 
-                    b.ToTable("AccountAdjustments");
+                    b.ToTable("AccountAdjustments", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.Advisor", b =>
@@ -154,7 +157,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Advisors");
+                    b.ToTable("Advisors", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.AdvisorCommission", b =>
@@ -164,6 +167,9 @@ namespace brokerApp.API.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AccountAdjustmentId")
+                        .HasColumnType("integer");
 
                     b.Property<int>("AdvisorId")
                         .HasColumnType("integer");
@@ -194,6 +200,8 @@ namespace brokerApp.API.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AccountAdjustmentId");
+
                     b.HasIndex("AdvisorId");
 
                     b.HasIndex("CommissionStatementId");
@@ -202,7 +210,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("SubmissionId");
 
-                    b.ToTable("AdvisorCommissions");
+                    b.ToTable("AdvisorCommissions", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.AdvisorGroup", b =>
@@ -223,7 +231,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AdvisorGroups");
+                    b.ToTable("AdvisorGroups", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.CommissionStatement", b =>
@@ -268,7 +276,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("CommissionStatements");
+                    b.ToTable("CommissionStatements", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.MovementItem", b =>
@@ -325,7 +333,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("MatchedSubmissionId");
 
-                    b.ToTable("MovementItems");
+                    b.ToTable("MovementItems", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.PolicyPayment", b =>
@@ -353,7 +361,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("SubmissionId");
 
-                    b.ToTable("PolicyPayments");
+                    b.ToTable("PolicyPayments", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.PolicyRecord", b =>
@@ -391,7 +399,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("AdvisorGroupId");
 
-                    b.ToTable("PolicyRecords");
+                    b.ToTable("PolicyRecords", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.PromotionalItem", b =>
@@ -419,7 +427,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PromotionalItems");
+                    b.ToTable("PromotionalItems", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.StatementItem", b =>
@@ -480,7 +488,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("MatchedSubmissionId");
 
-                    b.ToTable("StatementItems");
+                    b.ToTable("StatementItems", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.Submission", b =>
@@ -557,7 +565,7 @@ namespace brokerApp.API.Migrations
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("PolicyNumber"), "gin");
                     NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("PolicyNumber"), new[] { "gin_trgm_ops" });
 
-                    b.ToTable("Submissions");
+                    b.ToTable("Submissions", (string)null);
                 });
 
             modelBuilder.Entity("brokerApp.API.Models.SubmissionDocument", b =>
@@ -590,7 +598,7 @@ namespace brokerApp.API.Migrations
 
                     b.HasIndex("SubmissionId");
 
-                    b.ToTable("SubmissionDocuments");
+                    b.ToTable("SubmissionDocuments", (string)null);
                 });
 
             modelBuilder.Entity("AdvisorAdvisorGroup", b =>
@@ -661,6 +669,10 @@ namespace brokerApp.API.Migrations
 
             modelBuilder.Entity("brokerApp.API.Models.AdvisorCommission", b =>
                 {
+                    b.HasOne("brokerApp.API.Models.AccountAdjustment", "AccountAdjustment")
+                        .WithMany()
+                        .HasForeignKey("AccountAdjustmentId");
+
                     b.HasOne("brokerApp.API.Models.Advisor", "Advisor")
                         .WithMany()
                         .HasForeignKey("AdvisorId")
@@ -678,6 +690,8 @@ namespace brokerApp.API.Migrations
                     b.HasOne("brokerApp.API.Models.Submission", "Submission")
                         .WithMany()
                         .HasForeignKey("SubmissionId");
+
+                    b.Navigation("AccountAdjustment");
 
                     b.Navigation("Advisor");
 

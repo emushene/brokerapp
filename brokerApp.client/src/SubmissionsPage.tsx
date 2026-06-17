@@ -337,7 +337,7 @@ const SubmissionsPage: React.FC = () => {
       header: 'Premium',
       accessor: (s) => (
         <div>
-          <div className="font-bold text-green-500 text-xs">R {s.premium.toLocaleString()}</div>
+          <div className="font-bold text-green-500 text-xs">R {s.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div className="text-[10px] text-slate-500 uppercase">Ref: {s.salaryRefNo}</div>
         </div>
       ),

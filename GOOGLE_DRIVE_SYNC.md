@@ -4,10 +4,12 @@ This application includes an automated synchronization service that maps a Googl
 
 ## How it Works
 
-1.  **Advisors (Folders):** Every top-level folder within the configured `RootFolderId` is treated as an **Advisor**. 
+1.  **Advisors (Folders):** The system supports two folder structures:
+    *   **Flat Structure:** If a configured `RootFolderId` contains PDF files directly, they are synced under an Advisor named after that root folder.
+    *   **Nested Structure (Legacy):** Every top-level folder within the configured `RootFolderId` is treated as an **Advisor**. 
     *   If a folder name matches an existing Advisor in the database, files are synced to them.
     *   If the Advisor does not exist, the system creates a new Advisor record automatically.
-2.  **Submissions (Files):** PDF files inside an advisor's folder are parsed and converted into **Submissions**.
+2.  **Submissions (Files):** PDF files inside any processed folder are parsed and converted into **Submissions**.
 3.  **Documents:** The tool captures the Google Drive `webViewLink` for each PDF, making them clickable and viewable directly from the application.
 
 ## Synchronization Schedule

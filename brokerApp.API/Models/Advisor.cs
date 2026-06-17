@@ -13,4 +13,5 @@ public class Advisor
     public decimal CommissionPercentage2ndYear { get; set; } = 70.0m;
 
     public ICollection<Submission> Submissions { get; set; } = new List<Submission>();
+    public ICollection<AccountAdjustment> Adjustments { get; set; } = new List<AccountAdjustment>();
 }

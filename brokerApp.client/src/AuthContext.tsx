@@ -17,7 +17,7 @@ const IDLE_TIMEOUT = 7200000;
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<any>(null);
 
   const logout = useCallback(async () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);

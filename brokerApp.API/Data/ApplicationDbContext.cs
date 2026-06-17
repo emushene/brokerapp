@@ -117,7 +117,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<AccountAdjustment>(entity =>
         {
             entity.HasOne(a => a.Advisor)
-                  .WithMany()
+                  .WithMany(a => a.Adjustments)
                   .HasForeignKey(a => a.AdvisorId)
                   .IsRequired(false);
 

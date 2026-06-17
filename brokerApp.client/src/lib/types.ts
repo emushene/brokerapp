@@ -102,6 +102,7 @@ export interface Commission {
   id: number;
   policyPaymentId?: number;
   commissionStatementId?: number;
+  accountAdjustmentId?: number;
   amountReceived: number;
   reference: string;
   advisorId: number;
@@ -212,6 +213,7 @@ export interface AccountAdjustment {
   id: number;
   totalAmount: number;
   remainingBalance: number;
+  targetMonthlyRepayment?: number;
   quantity: number;
   description: string;
   dateIncurred: string;

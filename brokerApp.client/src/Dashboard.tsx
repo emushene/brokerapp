@@ -47,7 +47,7 @@ const Dashboard: React.FC = () => {
 
   const stats = [
     { label: 'Total Submissions', value: submissions.length, icon: FilePlus, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { label: 'Total Premium', value: `R ${totalPremium.toLocaleString()}`, icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-500/10' },
+    { label: 'Total Premium', value: `R ${totalPremium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-500/10' },
     { label: 'Active Policies', value: Math.floor(submissions.length * 0.8), icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10' },
     { label: 'Success Rate', value: '94%', icon: Activity, color: 'text-orange-500', bg: 'bg-orange-500/10' },
   ];
@@ -132,7 +132,7 @@ const Dashboard: React.FC = () => {
                         <div className="font-semibold text-white">{s.applicantSurname}</div>
                         <div className="text-xs text-slate-500">#{s.id}</div>
                       </td>
-                      <td className="px-6 py-4 font-medium text-slate-200">R {s.premium.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-medium text-slate-200">R {s.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className="px-6 py-4">
                         <span className="bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-xs font-bold ring-1 ring-inset ring-green-500/20">Active</span>
                       </td>

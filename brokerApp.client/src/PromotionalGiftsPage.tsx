@@ -167,8 +167,8 @@ const PromotionalGiftsPage: React.FC = () => {
       header: 'Total Value',
       accessor: (a) => (
         <div className="text-right">
-          <p className="text-sm font-black text-white">R {(a.totalAmount || 0).toLocaleString()}</p>
-          <p className="text-[10px] text-slate-500 font-bold">Debt: R {(a.remainingBalance || 0).toLocaleString()}</p>
+          <p className="text-sm font-black text-white">R {(a.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <p className="text-[10px] text-slate-500 font-bold">Debt: R {(a.remainingBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
       )
     }
@@ -208,11 +208,11 @@ const PromotionalGiftsPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-slate-800/40 border border-slate-700/50 p-6 rounded-3xl">
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Gift Value</p>
-          <p className="text-3xl font-black text-white">R {adjustments.reduce((s, a) => s + (a.totalAmount || 0), 0).toLocaleString()}</p>
+          <p className="text-3xl font-black text-white">R {adjustments.reduce((s, a) => s + (a.totalAmount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-slate-800/40 border border-slate-700/50 p-6 rounded-3xl">
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Recoverable Amount</p>
-          <p className="text-3xl font-black text-emerald-500">R {adjustments.reduce((s, a) => s + (a.remainingBalance || 0), 0).toLocaleString()}</p>
+          <p className="text-3xl font-black text-emerald-500">R {adjustments.reduce((s, a) => s + (a.remainingBalance || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-slate-800/40 border border-slate-700/50 p-6 rounded-3xl">
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Items Issued</p>
@@ -307,7 +307,7 @@ const PromotionalGiftsPage: React.FC = () => {
                   >
                     <option value="">Select...</option>
                     {catalog.map(item => (
-                      <option key={item.id} value={item.id}>{item.name} (R {(item.price || 0).toLocaleString()})</option>
+                      <option key={item.id} value={item.id}>{item.name} (R {(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</option>
                     ))}
                   </select>
                 </div>
@@ -414,7 +414,7 @@ const PromotionalGiftsPage: React.FC = () => {
                           <p className="text-xs text-slate-500">{item.description}</p>
                         </div>
                       </div>
-                      <p className="font-black text-white">R {(item.price || 0).toLocaleString()}</p>
+                      <p className="font-black text-white">R {(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </div>
                   ))}
                 </div>
