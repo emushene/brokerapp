@@ -7,6 +7,7 @@ public class AccountAdjustment
     public int Id { get; set; }
     public decimal TotalAmount { get; set; }
     public decimal RemainingBalance { get; set; }
+    public decimal? TargetMonthlyRepayment { get; set; }
     public int Quantity { get; set; } = 1;
     public string Description { get; set; } = string.Empty;
     public DateTime DateIncurred { get; set; } = DateTime.UtcNow;

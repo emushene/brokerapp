@@ -41,7 +41,7 @@ public class FinancialsService : IFinancialsService
             foreach (var advisor in submission.Advisors)
             {
                 var percentage = advisor.CommissionPercentage1stYear / 100m;
-                var commissionAmount = (payment.AmountReceived * percentage) / submission.Advisors.Count;
+                var commissionAmount = Math.Round((payment.AmountReceived * percentage) / submission.Advisors.Count, 2);
 
                 var commission = new AdvisorCommission
                 {
@@ -117,6 +117,98 @@ public class FinancialsService : IFinancialsService
         await _context.SaveChangesAsync();
     }
 
+    public async Task MarkAdvisorStatementAsPaidAsync(int advisorId, int statementId, string payoutReference)
+    {
+        var commissions = await _context.AdvisorCommissions
+            .Where(c => c.AdvisorId == advisorId && c.CommissionStatementId == statementId && !c.IsPaid)
+            .ToListAsync();
+
+        foreach (var c in commissions)
+        {
+            c.IsPaid = true;
+            c.DatePaid = DateTime.UtcNow;
+            c.PayoutReference = payoutReference;
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task SettleAdvisorStatementAsync(BulkSettlementDto dto)
+    {
+        // 1. Mark all pending commissions for this advisor in this statement as paid
+        var commissions = await _context.AdvisorCommissions
+            .Where(c => c.AdvisorId == dto.AdvisorId && c.CommissionStatementId == dto.StatementId && !c.IsPaid)
+            .ToListAsync();
+
+        foreach (var c in commissions)
+        {
+            c.IsPaid = true;
+            c.DatePaid = DateTime.UtcNow;
+            c.PayoutReference = dto.PayoutReference;
+        }
+
+        // 2. Apply requested deductions
+        var deductionLines = new List<string>();
+        foreach (var deduction in dto.Deductions)
+        {
+            if (deduction.Amount <= 0) continue;
+
+            var adj = await _context.AccountAdjustments.FindAsync(deduction.AdjustmentId);
+            if (adj == null) continue;
+
+            deductionLines.Add($"{adj.Type} - {adj.Description}: -R{deduction.Amount:N2}");
+
+            // Update the debt balance
+            adj.RemainingBalance -= deduction.Amount;
+            if (adj.RemainingBalance <= 0)
+            {
+                adj.RemainingBalance = 0;
+                adj.Status = AdjustmentStatus.Cleared;
+            }
+            else
+            {
+                adj.Status = AdjustmentStatus.PartiallyPaid;
+            }
+
+            // Record the deduction as a negative commission record so it appears on the payslip
+            var deductionRecord = new AdvisorCommission
+            {
+                AdvisorId = dto.AdvisorId,
+                CommissionStatementId = dto.StatementId,
+                AccountAdjustmentId = adj.Id,
+                CommissionAmount = -deduction.Amount,
+                DateCalculated = DateTime.UtcNow,
+                PayoutReference = $"DEDUCTION: {adj.Type} - {adj.Description}",
+                IsPaid = true,
+                DatePaid = DateTime.UtcNow
+            };
+            _context.AdvisorCommissions.Add(deductionRecord);
+        }
+
+        await _context.SaveChangesAsync();
+
+        // Stage 2 Notification: Payment Confirmed
+        var advisor = await _context.Advisors.FindAsync(dto.AdvisorId);
+        var statement = await _context.CommissionStatements.FindAsync(dto.StatementId);
+        if (advisor != null && statement != null && !string.IsNullOrEmpty(advisor.Email))
+        {
+            var grossAmount = commissions.Sum(c => c.CommissionAmount);
+            var totalDeductions = dto.Deductions.Sum(d => d.Amount);
+            var netPayout = grossAmount - totalDeductions;
+
+            try {
+                await _emailService.SendFinalPayslipNotificationAsync(
+                    advisor.Name,
+                    advisor.Email,
+                    statement.FileName,
+                    netPayout,
+                    dto.PayoutReference,
+                    deductionLines
+                );
+            } catch { /* Log and continue */ }
+        }
+    }
+
     public async Task HandleLapseAsync(int submissionId)
     {
         var submission = await _context.Submissions
@@ -161,6 +253,52 @@ public class FinancialsService : IFinancialsService
     public async Task ManualLinkStatementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null, int? advisorGroupId = null)
     {
         var item = await _context.StatementItems.FindAsync(itemId);
+        if (item == null) throw new Exception("Item not found");
+
+        await ConfirmStatementItemInternalAsync(item, submissionId, selectedAdvisorIds, advisorGroupId);
+
+        // Also confirm the matching movement item if it exists in the same statement
+        var relatedMovementItem = await _context.MovementItems
+            .FirstOrDefaultAsync(mi => mi.CommissionStatementId == item.CommissionStatementId 
+                                 && mi.PolicyNumber == item.PolicyNumber 
+                                 && !mi.IsConfirmed);
+        
+        if (relatedMovementItem != null)
+        {
+            relatedMovementItem.MatchedSubmissionId = submissionId;
+            relatedMovementItem.IsConfirmed = true;
+            relatedMovementItem.AdvisorName = item.AdvisorName;
+            relatedMovementItem.FileUrl = item.FileUrl;
+            relatedMovementItem.GoogleDriveLink = item.GoogleDriveLink;
+        }
+
+        var sub = await _context.Submissions.FindAsync(submissionId);
+        if (sub != null)
+        {
+            // Determine who to sync to Master Policy
+            var advisorsToSync = new List<Advisor>();
+            if (selectedAdvisorIds != null && selectedAdvisorIds.Any())
+            {
+                advisorsToSync = await _context.Advisors.Where(a => selectedAdvisorIds.Contains(a.Id)).ToListAsync();
+            }
+            else if (advisorGroupId.HasValue)
+            {
+                var group = await _context.AdvisorGroups.Include(g => g.Members).FirstOrDefaultAsync(g => g.Id == advisorGroupId.Value);
+                if (group != null) advisorsToSync = group.Members.ToList();
+            }
+            else
+            {
+                advisorsToSync = sub.Advisors.ToList();
+            }
+
+            await UpdateMasterPolicyAsync(item.PolicyNumber, sub, item.Amount, item.Premium, item.Category == "Lapse", advisorsToSync, advisorGroupId ?? sub.AdvisorGroupId);
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    private async Task ConfirmStatementItemInternalAsync(StatementItem item, int submissionId, List<int>? selectedAdvisorIds = null, int? advisorGroupId = null)
+    {
         var sub = await _context.Submissions
             .Include(s => s.Advisors)
             .Include(s => s.AdvisorGroup)
@@ -168,7 +306,7 @@ public class FinancialsService : IFinancialsService
             .Include(s => s.Documents)
             .FirstOrDefaultAsync(s => s.Id == submissionId);
 
-        if (item == null || sub == null) throw new Exception("Item or Submission not found");
+        if (sub == null) throw new Exception("Submission not found");
 
         item.MatchedSubmissionId = sub.Id;
         item.IsConfirmed = true;
@@ -227,7 +365,7 @@ public class FinancialsService : IFinancialsService
             {
                 var rate = isSecondYear ? advisor.CommissionPercentage2ndYear : advisor.CommissionPercentage1stYear;
                 var percentage = rate / 100m;
-                var commissionPerAdvisor = (item.Amount * percentage) / advisorsToPay.Count;
+                var commissionPerAdvisor = Math.Round((item.Amount * percentage) / advisorsToPay.Count, 2);
 
                 var commission = new AdvisorCommission
                 {
@@ -242,9 +380,6 @@ public class FinancialsService : IFinancialsService
                 _context.AdvisorCommissions.Add(commission);
             }
         }
-
-        await UpdateMasterPolicyAsync(item.PolicyNumber, sub, item.Amount, item.Premium, item.Category == "Lapse", advisorsToPay, effectiveGroupId);
-        await _context.SaveChangesAsync();
     }
 
     public async Task ManualLinkMovementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null, int? advisorGroupId = null)
@@ -262,7 +397,7 @@ public class FinancialsService : IFinancialsService
         item.MatchedSubmissionId = sub.Id;
         item.IsConfirmed = true;
 
-        // Follow the Money: Determine who gets paid
+        // Follow the Money: Determine who gets involved
         var advisorsInvolved = new List<Advisor>();
         int? effectiveGroupId = advisorGroupId;
 
@@ -307,6 +442,17 @@ public class FinancialsService : IFinancialsService
         item.FileUrl = sub.Documents.OrderByDescending(d => d.DateModified).FirstOrDefault()?.FileUrl;
         item.GoogleDriveLink = item.FileUrl;
 
+        // CROSS-LINK: If there is a matching StatementItem, confirm it too!
+        var relatedStatementItem = await _context.StatementItems
+            .FirstOrDefaultAsync(si => si.CommissionStatementId == item.CommissionStatementId 
+                                 && si.PolicyNumber == item.PolicyNumber 
+                                 && !si.IsConfirmed);
+
+        if (relatedStatementItem != null)
+        {
+            await ConfirmStatementItemInternalAsync(relatedStatementItem, submissionId, selectedAdvisorIds, advisorGroupId);
+        }
+
         // If it's a lapse in movement, we might need to trigger clawbacks
         if (item.Category == "Lapse" && advisorsInvolved.Any())
         {
@@ -336,7 +482,7 @@ public class FinancialsService : IFinancialsService
             }
         }
 
-        await UpdateMasterPolicyAsync(item.PolicyNumber, sub, 0, item.Premium, item.Category == "Lapse", advisorsInvolved, effectiveGroupId);
+        await UpdateMasterPolicyAsync(item.PolicyNumber, sub, relatedStatementItem?.Amount ?? 0, item.Premium, item.Category == "Lapse", advisorsInvolved, effectiveGroupId);
         await _context.SaveChangesAsync();
     }
 
@@ -351,19 +497,38 @@ public class FinancialsService : IFinancialsService
         // Notify advisors involved in this run
         var commissionsInRun = await _context.AdvisorCommissions
             .Include(c => c.Advisor)
+            .Include(c => c.Submission)
             .Where(c => c.CommissionStatementId == statementId)
             .ToListAsync();
 
-        var advisorTotals = commissionsInRun
-            .GroupBy(c => new { c.AdvisorId, c.Advisor.Name, c.Advisor.Email })
-            .Select(g => new { g.Key.Name, g.Key.Email, Total = g.Sum(c => c.CommissionAmount) });
+        var advisorGroups = commissionsInRun
+            .GroupBy(c => new { c.AdvisorId, c.Advisor.Name, c.Advisor.Email });
 
-        foreach (var adv in advisorTotals)
+        foreach (var group in advisorGroups)
         {
-            if (!string.IsNullOrEmpty(adv.Email))
+            if (!string.IsNullOrEmpty(group.Key.Email))
             {
                 try {
-                    await _emailService.SendCommissionNotificationAsync(adv.Name, adv.Email, statement.FileName, adv.Total);
+                    var totalGross = group.Sum(c => c.CommissionAmount);
+                    var policies = group
+                        .Where(c => c.Submission != null)
+                        .Select(c => $"{c.Submission.PolicyNumber} - {c.Submission.ApplicantSurname} {c.Submission.Initials} (R{c.CommissionAmount:N2})")
+                        .ToList();
+                    
+                    // Also include items without sub if they have a payout reference (like clawbacks manually added)
+                    var otherItems = group
+                        .Where(c => c.Submission == null && !string.IsNullOrEmpty(c.PayoutReference))
+                        .Select(c => $"{c.PayoutReference} (R{c.CommissionAmount:N2})")
+                        .ToList();
+                    
+                    policies.AddRange(otherItems);
+
+                    await _emailService.SendProcessedPoliciesNotificationAsync(
+                        group.Key.Name, 
+                        group.Key.Email, 
+                        statement.FileName, 
+                        totalGross, 
+                        policies);
                 } catch { /* Log and continue */ }
             }
         }
@@ -486,18 +651,65 @@ public class FinancialsService : IFinancialsService
             .Include(a => a.AdvisorGroup)
             .Where(a => a.RemainingBalance > 0);
 
-        if (advisorId.HasValue) query = query.Where(a => a.AdvisorId == advisorId.Value);
-        if (groupId.HasValue) query = query.Where(a => a.AdvisorGroupId == groupId.Value);
+        if (advisorId.HasValue && !groupId.HasValue)
+        {
+            // Get groups this advisor belongs to
+            var advisorGroups = await _context.AdvisorGroups
+                .Where(g => g.Members.Any(m => m.Id == advisorId.Value))
+                .Select(g => g.Id)
+                .ToListAsync();
+
+            query = query.Where(a => a.AdvisorId == advisorId.Value || (a.AdvisorGroupId.HasValue && advisorGroups.Contains(a.AdvisorGroupId.Value)));
+        }
+        else
+        {
+            if (advisorId.HasValue) query = query.Where(a => a.AdvisorId == advisorId.Value);
+            if (groupId.HasValue) query = query.Where(a => a.AdvisorGroupId == groupId.Value);
+        }
 
         var list = await query.ToListAsync();
         return _mapper.Map<IEnumerable<AccountAdjustmentDto>>(list);
     }
 
-    public async Task ApplyDeductionAsync(int adjustmentId, decimal amount, int statementId)
+    public async Task ApplyDeductionAsync(int adjustmentId, decimal amount, int statementId, int? advisorId = null)
     {
         var adj = await _context.AccountAdjustments.FindAsync(adjustmentId);
         if (adj == null) return;
 
+        await ApplyDeductionToAdjustmentInternalAsync(adj, amount, statementId, advisorId);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task ApplyDeductionToTypeAsync(int advisorId, AdjustmentType type, decimal amount, int statementId)
+    {
+        // Get groups this advisor belongs to
+        var advisorGroups = await _context.AdvisorGroups
+            .Where(g => g.Members.Any(m => m.Id == advisorId))
+            .Select(g => g.Id)
+            .ToListAsync();
+
+        var outstanding = await _context.AccountAdjustments
+            .Where(a => (a.AdvisorId == advisorId || (a.AdvisorGroupId.HasValue && advisorGroups.Contains(a.AdvisorGroupId.Value))) 
+                        && a.Type == type && a.RemainingBalance > 0)
+            .OrderBy(a => a.DateIncurred)
+            .ToListAsync();
+
+        decimal remainingToDeduct = amount;
+
+        foreach (var adj in outstanding)
+        {
+            if (remainingToDeduct <= 0) break;
+
+            decimal deductFromThis = Math.Min(remainingToDeduct, adj.RemainingBalance);
+            await ApplyDeductionToAdjustmentInternalAsync(adj, deductFromThis, statementId, advisorId);
+            remainingToDeduct -= deductFromThis;
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    private async Task ApplyDeductionToAdjustmentInternalAsync(AccountAdjustment adj, decimal amount, int statementId, int? targetAdvisorId = null)
+    {
         adj.RemainingBalance -= amount;
         if (adj.RemainingBalance <= 0)
         {
@@ -509,12 +721,21 @@ public class FinancialsService : IFinancialsService
             adj.Status = AdjustmentStatus.PartiallyPaid;
         }
 
+        // Determine which advisor's payslip this deduction should be recorded on
+        int effectiveAdvisorId = targetAdvisorId ?? adj.AdvisorId ?? 0;
+
+        if (effectiveAdvisorId == 0)
+        {
+            throw new InvalidOperationException("A specific advisor must be identified to record the deduction on their payslip.");
+        }
+
         // We record the deduction as a negative commission record to impact the payslip
         // This keeps the ledger audit trail visible in the commission history
         var deduction = new AdvisorCommission
         {
-            AdvisorId = adj.AdvisorId ?? 0, // Handle group deductions logic if needed
+            AdvisorId = effectiveAdvisorId,
             CommissionStatementId = statementId,
+            AccountAdjustmentId = adj.Id,
             CommissionAmount = -amount,
             DateCalculated = DateTime.UtcNow,
             PayoutReference = $"DEDUCTION: {adj.Type} - {adj.Description}",
@@ -522,15 +743,6 @@ public class FinancialsService : IFinancialsService
             DatePaid = DateTime.UtcNow
         };
 
-        if (adj.AdvisorGroupId.HasValue && !adj.AdvisorId.HasValue)
-        {
-            // If it was a group deduction, we might need to decide how to split it
-            // For now, if we are applying it to a specific payslip, we need an AdvisorId.
-            // In the UI, the manager will select WHICH advisor's payslip to deduct from.
-            throw new InvalidOperationException("Group deductions must be targeted to a specific advisor's payslip.");
-        }
-
         _context.AdvisorCommissions.Add(deduction);
-        await _context.SaveChangesAsync();
     }
 }

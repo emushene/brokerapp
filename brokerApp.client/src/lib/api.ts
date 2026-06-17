@@ -3,7 +3,7 @@ import { auth } from './firebase';
 import type { Submission, SubmissionCreateDto, PolicyPaymentCreateDto, Commission, Advisor, CommissionStatement, AdvisorGroup, PromotionalItem, AccountAdjustment } from './types';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5137/api', // Match your actual API backend port
+  baseURL: '/api', // Use relative path for Nginx proxy
 });
 
 // Interceptor to add Firebase JWT token to every request
@@ -115,6 +115,16 @@ export const financialsApi = {
       },
     });
   },
+  markAdvisorStatementAsPaid: async (advisorId: number, statementId: number, payoutReference: string) => {
+    await api.post(`/Financials/advisors/${advisorId}/statements/${statementId}/pay`, payoutReference, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  },
+  bulkSettle: async (data: { advisorId: number, statementId: number, payoutReference: string, deductions: { adjustmentId: number, amount: number }[] }) => {
+    await api.post('/Financials/bulk-settle', data);
+  },
   handleLapse: async (submissionId: number) => {
     await api.post(`/Financials/submissions/${submissionId}/lapse`);
   },
@@ -163,6 +173,10 @@ export const financialsApi = {
     const response = await api.get<any>(`/Financials/advisors/${advisorId}/payslips/${statementId}`);
     return response.data;
   },
+  getStatementPayslips: async (id: number) => {
+    const response = await api.get<any>(`/Financials/statements/${id}/payslips`);
+    return response.data;
+  },
   getPromotionalItems: async () => {
     const response = await api.get<PromotionalItem[]>('/Financials/promotional-items');
     return response.data;
@@ -181,6 +195,9 @@ export const financialsApi = {
   },
   applyDeduction: async (adjustmentId: number, amount: number, statementId: number) => {
     await api.post(`/Financials/adjustments/${adjustmentId}/deduct`, { amount, statementId });
+  },
+  applyDeductionToType: async (advisorId: number, type: number, amount: number, statementId: number) => {
+    await api.post(`/Financials/advisors/${advisorId}/adjustments/type/${type}/deduct`, { amount, statementId });
   },
 };
 

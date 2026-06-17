@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Apis.Auth.OAuth2;
@@ -12,59 +10,44 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        var keyFilePath = "broker-app-key.json";
+        var keyFilePath = "../brokerApp.API/joska-fin-key.json";
+        var parentFolderId = "1xSb_7fIkfEjx_YMsPQDW-NrK82Ye54sG"; // ASSUPOL
 
         try
         {
-            Console.WriteLine("Loading credentials...");
             GoogleCredential credential;
             using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
             {
                 credential = await GoogleCredential.FromStreamAsync(stream, CancellationToken.None);
-                credential = credential.CreateScoped(DriveService.Scope.Drive);
+                credential = credential.CreateScoped(DriveService.Scope.DriveMetadataReadonly);
             }
 
-            var driveService = new DriveService(new BaseClientService.Initializer
+            var service = new DriveService(new BaseClientService.Initializer
             {
                 HttpClientInitializer = credential,
-                ApplicationName = "BrokerAppCleanup"
+                ApplicationName = "FolderLister"
             });
 
-            Console.WriteLine("Listing files to delete (everything except folders)...");
-            var listRequest = driveService.Files.List();
-            listRequest.Fields = "nextPageToken, files(id, name, mimeType)";
-            listRequest.Q = "trashed = false and mimeType != 'application/vnd.google-apps.folder'";
-            var result = await listRequest.ExecuteAsync();
+            Console.WriteLine($"Listing subfolders in ASSUPOL ({parentFolderId})...");
+            var request = service.Files.List();
+            request.Q = $"'{parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+            request.Fields = "files(id, name)";
+            request.SupportsAllDrives = true;
+            request.IncludeItemsFromAllDrives = true;
+            
+            var result = await request.ExecuteAsync();
 
             if (result.Files != null && result.Files.Count > 0)
             {
-                Console.WriteLine($"Found {result.Files.Count} files. Starting deletion...");
                 foreach (var file in result.Files)
                 {
-                    try {
-                        Console.WriteLine($"Deleting: {file.Name} ({file.Id})");
-                        await driveService.Files.Delete(file.Id).ExecuteAsync();
-                    } catch (Exception ex) {
-                        Console.WriteLine($"Failed to delete {file.Name}: {ex.Message}");
-                    }
+                    Console.WriteLine($"- {file.Name} (ID: {file.Id})");
                 }
-                Console.WriteLine("Deletion complete.");
             }
             else
             {
-                Console.WriteLine("No files found to delete.");
+                Console.WriteLine("No subfolders found.");
             }
-
-            // Also empty trash
-            Console.WriteLine("Emptying trash...");
-            await driveService.Files.EmptyTrash().ExecuteAsync();
-            Console.WriteLine("Trash emptied.");
-            
-            Console.WriteLine("\nChecking Quota again...");
-            var aboutRequest = driveService.About.Get();
-            aboutRequest.Fields = "storageQuota";
-            var about = await aboutRequest.ExecuteAsync();
-            Console.WriteLine($"Usage: {about.StorageQuota.Usage}");
         }
         catch (Exception ex)
         {

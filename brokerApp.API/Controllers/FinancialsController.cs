@@ -89,15 +89,18 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpGet("statements/{id}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetStatementDetails(int id)
     {
         var statement = await _context.CommissionStatements
             .Include(s => s.Items)
                 .ThenInclude(i => i.MatchedSubmission)
+                    .ThenInclude(sub => sub!.Advisors)
             .Include(s => s.MovementItems)
                 .ThenInclude(m => m.MatchedSubmission)
+                    .ThenInclude(sub => sub!.Advisors)
             .FirstOrDefaultAsync(s => s.Id == id);
-            
+
         if (statement == null) return NotFound();
         return Ok(statement);
     }
@@ -181,6 +184,7 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpGet("advisors/{advisorId}/payslips/{statementId}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetPayslipDetails(int advisorId, int statementId)
     {
         var statement = await _context.CommissionStatements.FindAsync(statementId);
@@ -205,6 +209,49 @@ public class FinancialsController : ControllerBase
                 ClientName = c.Submission?.ApplicantSurname + " " + c.Submission?.Initials,
                 c.DateCalculated
             })
+        });
+    }
+
+    [HttpGet("statements/{id}/payslips")]
+    public async Task<IActionResult> GetStatementPayslips(int id)
+    {
+        var statement = await _context.CommissionStatements.FindAsync(id);
+        if (statement == null) return NotFound();
+
+        var allCommissions = await _context.AdvisorCommissions
+            .Include(c => c.Advisor)
+            .Include(c => c.Submission)
+            .Where(c => c.CommissionStatementId == id)
+            .ToListAsync();
+
+        var grouped = allCommissions.GroupBy(c => c.AdvisorId)
+            .Select(g => new {
+                Advisor = new {
+                    Id = g.Key,
+                    Name = g.First().Advisor.Name,
+                    Code = g.First().Advisor.Code,
+                    Email = g.First().Advisor.Email
+                },
+                TotalAmount = g.Sum(c => c.CommissionAmount),
+                Commissions = g.Select(c => new {
+                    c.Id,
+                    c.CommissionAmount,
+                    c.PayoutReference,
+                    ClientName = c.Submission?.ApplicantSurname + " " + c.Submission?.Initials,
+                    c.DateCalculated
+                })
+            })
+            .OrderBy(x => x.Advisor.Name)
+            .ToList();
+
+        return Ok(new {
+            Statement = new {
+                statement.Id,
+                statement.FileName,
+                statement.StatementDate,
+                statement.Status
+            },
+            Payslips = grouped
         });
     }
 
@@ -236,6 +283,34 @@ public class FinancialsController : ControllerBase
         {
             await _financialsService.MarkCommissionAsPaidAsync(id, payoutReference);
             return Ok();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("advisors/{advisorId}/statements/{statementId}/pay")]
+    public async Task<IActionResult> MarkAdvisorStatementAsPaid(int advisorId, int statementId, [FromBody] string payoutReference)
+    {
+        try
+        {
+            await _financialsService.MarkAdvisorStatementAsPaidAsync(advisorId, statementId, payoutReference);
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("bulk-settle")]
+    public async Task<IActionResult> BulkSettle(BulkSettlementDto dto)
+    {
+        try
+        {
+            await _financialsService.SettleAdvisorStatementAsync(dto);
+            return Ok(new { message = "Payout and deductions processed successfully." });
         }
         catch (Exception ex)
         {
@@ -353,7 +428,21 @@ public class FinancialsController : ControllerBase
     {
         try
         {
-            await _financialsService.ApplyDeductionAsync(id, dto.Amount, dto.StatementId);
+            await _financialsService.ApplyDeductionAsync(id, dto.Amount, dto.StatementId, dto.AdvisorId);
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("advisors/{advisorId}/adjustments/type/{type}/deduct")]
+    public async Task<IActionResult> ApplyDeductionToType(int advisorId, AdjustmentType type, [FromBody] DeductionRequest dto)
+    {
+        try
+        {
+            await _financialsService.ApplyDeductionToTypeAsync(advisorId, type, dto.Amount, dto.StatementId);
             return Ok();
         }
         catch (Exception ex)
@@ -367,4 +456,5 @@ public class DeductionRequest
 {
     public decimal Amount { get; set; }
     public int StatementId { get; set; }
+    public int? AdvisorId { get; set; }
 }

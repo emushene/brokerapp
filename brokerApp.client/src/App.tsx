@@ -11,6 +11,7 @@ import PerformancePage from './PerformancePage';
 import AdvisorPayslipsPage from './AdvisorPayslipsPage';
 import AdvancesPage from './AdvancesPage';
 import PromotionalGiftsPage from './PromotionalGiftsPage';
+import SettlementsPage from './SettlementsPage';
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/advisors" element={<AdvisorsPage />} />
             <Route path="/financials" element={<FinancialsPage />} />
+            <Route path="/settlements" element={<SettlementsPage />} />
             <Route path="/advances" element={<AdvancesPage />} />
             <Route path="/promotional-gifts" element={<PromotionalGiftsPage />} />
             <Route path="/payslips" element={<AdvisorPayslipsPage />} />

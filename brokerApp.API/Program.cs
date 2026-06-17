@@ -111,7 +111,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        policy.AllowAnyOrigin()
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -123,20 +123,13 @@ var app = builder.Build();
 // PIPELINE
 // --------------------
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-else 
-{
-    app.UseHttpsRedirection();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
+
+app.UseCors("AllowReact");
 
 app.UseAuthentication();   // ✔ Firebase validation
 app.UseAuthorization();    // ✔ [Authorize] enforcement
-
-app.UseCors("AllowReact");
 
 app.MapControllers();
 

@@ -222,7 +222,7 @@ const PerformancePage: React.FC = () => {
                                 <div className="space-y-1.5 scale-100 group-hover:scale-110 transition-transform">
                                   <div className="text-xl font-black text-blue-400 leading-none">{stats.submissionCount}</div>
                                   <div className="text-[11px] font-bold text-slate-500 bg-slate-900/40 py-0.5 px-2 rounded-full inline-block">
-                                    R {stats.totalPremium.toLocaleString()}
+                                    R {stats.totalPremium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </div>
                                 </div>
                               ) : (
@@ -236,7 +236,7 @@ const PerformancePage: React.FC = () => {
                         <div className="space-y-1">
                           <div className="text-2xl font-black text-white leading-none">{totalSubs}</div>
                           <div className="text-xs font-bold text-green-500">
-                            R {totalPrem.toLocaleString()}
+                            R {totalPrem.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                       </td>

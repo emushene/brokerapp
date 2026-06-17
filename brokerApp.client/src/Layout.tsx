@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, LogOut, User as UserIcon, Menu, Users, DollarSign, BarChart3, Receipt, Wallet, Package } from 'lucide-react';
+import { LayoutDashboard, FileText, LogOut, User as UserIcon, Menu, Users, DollarSign, BarChart3, Receipt, Wallet, Package, CreditCard } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 const Layout: React.FC = () => {
@@ -17,6 +17,7 @@ const Layout: React.FC = () => {
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
     { label: 'Submissions', path: '/submissions', icon: FileText },
     { label: 'Statements', path: '/financials', icon: DollarSign },
+    { label: 'Settlements', path: '/settlements', icon: CreditCard },
     { label: 'Pay Slips', path: '/payslips', icon: Receipt },
     { label: 'Advances', path: '/advances', icon: Wallet },
     { label: 'Promotional Gifts', path: '/promotional-gifts', icon: Package },

@@ -66,12 +66,6 @@ const FinancialsPage: React.FC = () => {
   const [statementFile, setStatementFile] = useState<File | null>(null);
   const [statementDate, setStatementDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Payout Modal State
-  const [showPayoutModal, setShowPayoutModal] = useState(false);
-  const [selectedCommission, setSelectedCommission] = useState<Commission | null>(null);
-  const [payoutRef, setPayoutRef] = useState('');
-  const [paying, setPaying] = useState(false);
-
   // PDF Modal State
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [selectedPdfUrl, setSelectedPdfUrl] = useState<string | null>(null);
@@ -99,6 +93,7 @@ const FinancialsPage: React.FC = () => {
 
   // Filter State
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [viewMode, setViewMode] = useState<'policy' | 'advisor'>('policy');
 
   const fetchData = async () => {
     try {
@@ -260,51 +255,83 @@ const FinancialsPage: React.FC = () => {
 
   const handleConcludeRun = async () => {
     if (!importResult) return;
+    console.log('Starting conclude run check for statement:', importResult.id);
     try {
       setLoading(true);
       // 1. Identify all advisors with earnings in this statement
       const earners = new Set<number>();
-      importResult.items.forEach(i => {
-        if (i.isConfirmed && i.matchedSubmission) {
-           i.matchedSubmission.advisors.forEach(a => earners.add(a.id));
-        }
-      });
-      importResult.movementItems.forEach(i => {
-        if (i.isConfirmed && i.matchedSubmission) {
-           i.matchedSubmission.advisors.forEach(a => earners.add(a.id));
-        }
-      });
+      
+      if (importResult.items) {
+        importResult.items.forEach(i => {
+          if (i.isConfirmed && i.matchedSubmission?.advisors) {
+             i.matchedSubmission.advisors.forEach(a => earners.add(a.id));
+          }
+        });
+      }
+      
+      if (importResult.movementItems) {
+        importResult.movementItems.forEach(i => {
+          if (i.isConfirmed && i.matchedSubmission?.advisors) {
+             i.matchedSubmission.advisors.forEach(a => earners.add(a.id));
+          }
+        });
+      }
+
+      console.log(`Identified ${earners.size} unique earners.`);
 
       // 2. Fetch their data & outstanding adjustments
       const concludeList = [];
       const initialDeductions: { [advisorId: number]: { [adjId: number]: number } } = {};
 
       for (const id of Array.from(earners)) {
-        const ad = await financialsApi.getPayslipDetails(id, importResult.id);
-        const outstanding = await financialsApi.getOutstandingAdjustments({ advisorId: id });
-        
-        const totalComm = ad.commissions.reduce((sum: number, c: any) => sum + c.commissionAmount, 0);
-
-        if (totalComm > 0 || outstanding.length > 0) {
-          concludeList.push({
-            advisorId: id,
-            name: ad.commissions[0]?.advisorName || 'Advisor ' + id,
-            commission: totalComm,
-            adjustments: outstanding
-          });
+        try {
+          const ad = await financialsApi.getPayslipDetails(id, importResult.id);
+          const outstanding = await financialsApi.getOutstandingAdjustments({ advisorId: id });
           
-          initialDeductions[id] = {};
-          outstanding.forEach(adj => {
-             initialDeductions[id][adj.id] = 0; 
-          });
+          const totalComm = ad.commissions.reduce((sum: number, c: any) => sum + c.commissionAmount, 0);
+
+          if (totalComm > 0 || outstanding.length > 0) {
+            concludeList.push({
+              advisorId: id,
+              name: ad.commissions[0]?.advisorName || 'Advisor ' + id,
+              commission: totalComm,
+              adjustments: outstanding
+            });
+            
+            initialDeductions[id] = {};
+            let remainingCommission = totalComm;
+            
+            // Group adjustments by type for the conclude run modal
+            const grouped = outstanding.reduce((acc, adj) => {
+              if (!acc[adj.type]) acc[adj.type] = 0;
+              acc[adj.type] += adj.remainingBalance;
+              return acc;
+            }, {} as { [key: number]: number });
+
+            Object.entries(grouped).forEach(([typeStr, totalBalance]) => {
+              const type = parseInt(typeStr);
+              // Auto-suggest deduction for advances (AdjustmentType.Advance is 0)
+              if (type === 0 && remainingCommission > 0) {
+                const suggestedDeduction = Math.min(remainingCommission, totalBalance);
+                initialDeductions[id][type] = suggestedDeduction;
+                remainingCommission -= suggestedDeduction;
+              } else {
+                initialDeductions[id][type] = 0; 
+              }
+            });
+          }
+        } catch (err) {
+          console.error(`Error fetching data for advisor ${id}:`, err);
         }
       }
 
+      console.log('Conclude list prepared:', concludeList.length, 'entries.');
       setConcludeData(concludeList);
       setDeductions(initialDeductions);
       setShowConcludeModal(true);
     } catch (error) {
-      console.error('Error preparing conclusion:', error);
+      console.error('Error identifying earners', error);
+      alert('Failed to prepare commission run. Check console for details.');
     } finally {
       setLoading(false);
     }
@@ -314,12 +341,14 @@ const FinancialsPage: React.FC = () => {
     if (!importResult) return;
     try {
       setConcluding(true);
-      // 1. Apply all deductions first
-      for (const advisorId in deductions) {
-        for (const adjId in deductions[advisorId]) {
-          const amount = deductions[advisorId][adjId];
+      // 1. Apply all deductions first (grouped by type)
+      for (const advisorIdStr in deductions) {
+        const advisorId = parseInt(advisorIdStr);
+        for (const typeStr in deductions[advisorId]) {
+          const type = parseInt(typeStr);
+          const amount = deductions[advisorId][type];
           if (amount > 0) {
-            await financialsApi.applyDeduction(parseInt(adjId), amount, importResult.id);
+            await financialsApi.applyDeductionToType(advisorId, type, amount, importResult.id);
           }
         }
       }
@@ -334,22 +363,6 @@ const FinancialsPage: React.FC = () => {
       console.error('Error concluding run:', error);
     } finally {
       setConcluding(false);
-    }
-  };
-
-  const handleMarkAsPaid = async () => {
-    if (!selectedCommission || !payoutRef) return;
-    try {
-      setPaying(true);
-      await financialsApi.markAsPaid(selectedCommission.id, payoutRef);
-      setShowPayoutModal(false);
-      setSelectedCommission(null);
-      setPayoutRef('');
-      fetchData();
-    } catch (error) {
-      console.error('Error marking as paid:', error);
-    } finally {
-      setPaying(false);
     }
   };
 
@@ -387,6 +400,73 @@ const FinancialsPage: React.FC = () => {
     });
   }, [importResult, categoryFilter]);
 
+  const groupedByAdvisor = useMemo(() => {
+    if (!importResult) return [];
+    
+    const groups: { [advisorId: number]: { 
+      advisorId: number, 
+      name: string, 
+      items: StatementItem[], 
+      movements: MovementItem[],
+      totalCommission: number,
+      totalMovements: number
+    } } = {};
+
+    // Helper to add to group
+    const addToGroup = (advisor: Advisor, item: any, isMovement: boolean) => {
+      if (!groups[advisor.id]) {
+        groups[advisor.id] = {
+          advisorId: advisor.id,
+          name: advisor.name,
+          items: [],
+          movements: [],
+          totalCommission: 0,
+          totalMovements: 0
+        };
+      }
+      
+      if (isMovement) {
+        groups[advisor.id].movements.push(item);
+        groups[advisor.id].totalMovements += item.premium;
+      } else {
+        groups[advisor.id].items.push(item);
+        // We calculate projected commission here based on advisor rates if we wanted to,
+        // but for now let's just show the item amount.
+        groups[advisor.id].totalCommission += item.amount / (item.matchedSubmission?.advisors?.length || 1);
+      }
+    };
+
+    // Process Statement Items
+    importResult.items.forEach(item => {
+      if (item.isMatched && item.matchedSubmission?.advisors) {
+        item.matchedSubmission.advisors.forEach(a => addToGroup(a, item, false));
+      } else {
+        // Unmatched or no advisor info - group under "Unassigned"
+        const unassignedId = -1;
+        if (!groups[unassignedId]) {
+          groups[unassignedId] = { advisorId: unassignedId, name: 'Unassigned / Pending Match', items: [], movements: [], totalCommission: 0, totalMovements: 0 };
+        }
+        groups[unassignedId].items.push(item);
+        groups[unassignedId].totalCommission += item.amount;
+      }
+    });
+
+    // Process Movement Items
+    importResult.movementItems.forEach(item => {
+      if (item.isMatched && item.matchedSubmission?.advisors) {
+        item.matchedSubmission.advisors.forEach(a => addToGroup(a, item, true));
+      } else {
+        const unassignedId = -1;
+        if (!groups[unassignedId]) {
+          groups[unassignedId] = { advisorId: unassignedId, name: 'Unassigned / Pending Match', items: [], movements: [], totalCommission: 0, totalMovements: 0 };
+        }
+        groups[unassignedId].movements.push(item);
+      }
+    });
+
+    return Object.values(groups).sort((a, b) => b.totalCommission - a.totalCommission);
+  }, [importResult]);
+
   const filterElement = (
     <div className="flex items-center gap-2 bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-1">
       <Filter className="w-3.5 h-3.5 text-slate-500" />
@@ -422,7 +502,7 @@ const FinancialsPage: React.FC = () => {
     {
       header: 'Earnings',
       accessor: (s) => (
-        <p className="font-black text-white">R {s.totalCommission.toLocaleString()}</p>
+        <p className="font-black text-white">R {s.totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
       )
     },
     {
@@ -434,36 +514,6 @@ const FinancialsPage: React.FC = () => {
           'bg-amber-500/10 text-amber-500 border-amber-500/20'
         }`}>
           {s.status}
-        </span>
-      )
-    }
-  ];
-
-  const commissionColumns: Column<Commission>[] = [
-    {
-      header: 'Advisor',
-      accessor: (c) => (
-        <div>
-          <p className="font-bold text-white">{c.advisorName}</p>
-          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(c.dateCalculated).toLocaleDateString()}</p>
-        </div>
-      )
-    },
-    {
-      header: 'Amount',
-      accessor: (c) => (
-        <p className={`font-black ${c.commissionAmount < 0 ? 'text-red-500' : 'text-green-500'}`}>
-          R {c.commissionAmount.toLocaleString()}
-        </p>
-      )
-    },
-    {
-      header: 'Status',
-      accessor: (c) => (
-        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border tracking-tighter ${
-          c.isPaid ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-        }`}>
-          {c.isPaid ? 'Paid' : 'Pending'}
         </span>
       )
     }
@@ -485,7 +535,7 @@ const FinancialsPage: React.FC = () => {
     },
     {
       header: 'Premium',
-      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString()}</p>
+      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
     },
     {
       header: 'Matched Advisor',
@@ -534,7 +584,7 @@ const FinancialsPage: React.FC = () => {
     },
     {
       header: 'Premium',
-      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString()}</p>
+      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
     },
     {
       header: 'Matched Advisor',
@@ -560,7 +610,7 @@ const FinancialsPage: React.FC = () => {
     },
     {
       header: 'Net Commission',
-      accessor: (i) => <p className={`text-xs font-black ${i.amount < 0 ? 'text-red-500' : 'text-green-500'}`}>R {i.amount.toLocaleString()}</p>
+      accessor: (i) => <p className={`text-xs font-black ${i.amount < 0 ? 'text-red-500' : 'text-green-500'}`}>R {i.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
     }
   ];
 
@@ -619,11 +669,11 @@ const FinancialsPage: React.FC = () => {
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between">
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Net Revenue</span>
-           <span className="text-lg font-black text-white">R {totalNet.toLocaleString()}</span>
+           <span className="text-lg font-black text-white">R {totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between">
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Internal Debt</span>
-           <span className="text-lg font-black text-amber-500">R {globalAdjustments.reduce((s, a) => s + a.remainingBalance, 0).toLocaleString()}</span>
+           <span className="text-lg font-black text-amber-500">R {globalAdjustments.reduce((s, a) => s + a.remainingBalance, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between">
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">History</span>
@@ -685,7 +735,25 @@ const FinancialsPage: React.FC = () => {
              </div>
           </div>
 
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="flex bg-slate-900/50 p-1 rounded-2xl w-fit border border-slate-800">
+            <button 
+              onClick={() => setViewMode('policy')}
+              className={`px-6 py-2 text-[10px] font-black uppercase rounded-xl transition-all flex items-center gap-2 ${viewMode === 'policy' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Policy View
+            </button>
+            <button 
+              onClick={() => setViewMode('advisor')}
+              className={`px-6 py-2 text-[10px] font-black uppercase rounded-xl transition-all flex items-center gap-2 ${viewMode === 'advisor' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              Advisor View
+            </button>
+          </div>
+
+          {viewMode === 'policy' ? (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="space-y-2">
               <h3 className="text-xs font-black text-white uppercase flex items-center gap-1.5 px-1">
                 <TrendingUp className="w-3.5 h-3.5 text-purple-500" />
@@ -751,6 +819,74 @@ const FinancialsPage: React.FC = () => {
               />
             </div>
           </div>
+        ) : (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {groupedByAdvisor.map(group => (
+                <div key={group.advisorId} className="bg-slate-800/20 border border-slate-700/50 rounded-[2.5rem] overflow-hidden">
+                  <div className="p-6 bg-slate-800/40 flex items-center justify-between border-b border-slate-700/50">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-xl font-black text-white">
+                        {group.name.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-black text-white">{group.name}</h4>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                          {group.items.length + group.movements.length} Total Policies
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                       <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Projected Settlement</p>
+                       <p className="text-2xl font-black text-emerald-500">
+                         R {group.totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                       </p>
+                    </div>
+                  </div>
+
+                  <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                       <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Commissions Detail</h5>
+                       <div className="space-y-2">
+                         {group.items.length > 0 ? group.items.map(item => (
+                           <div key={item.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-2xl border border-slate-800/50">
+                              <div>
+                                <p className="text-xs font-bold text-white">{item.clientName}</p>
+                                <p className="text-[9px] text-slate-500 font-mono">{item.policyNumber}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-xs font-black ${item.amount < 0 ? 'text-red-500' : 'text-blue-400'}`}>R {item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <CategoryBadge category={item.category || ''} />
+                              </div>
+                           </div>
+                         )) : (
+                           <p className="text-[10px] text-slate-600 italic px-4 py-2">No commissions in this run</p>
+                         )}
+                       </div>
+                    </div>
+                    <div className="space-y-2">
+                       <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Movements Detail</h5>
+                       <div className="space-y-2">
+                         {group.movements.length > 0 ? group.movements.map(item => (
+                           <div key={item.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-2xl border border-slate-800/50">
+                              <div>
+                                <p className="text-xs font-bold text-white">{item.clientName}</p>
+                                <p className="text-[9px] text-slate-500 font-mono">{item.policyNumber}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs font-black text-white">R {item.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <CategoryBadge category={item.category || ''} />
+                              </div>
+                           </div>
+                         )) : (
+                           <p className="text-[10px] text-slate-600 italic px-4 py-2">No movements in this run</p>
+                         )}
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -785,81 +921,35 @@ const FinancialsPage: React.FC = () => {
               </RouterLink>
             </div>
 
-            <div className="space-y-2">
-              <h3 className="text-xs font-black text-white uppercase flex items-center gap-1.5 px-1">
-                 <History className="w-3.5 h-3.5 text-blue-500" />
-                 Statement History
-              </h3>
-              <DataTable
-                data={statements}
-                columns={historyColumns}
-                loading={loading}
-                pageSize={10}
-                actions={[
-                  {
-                    icon: <ChevronRight className="w-4 h-4" />,
-                    label: 'View Details',
-                    onClick: (s) => loadStatementDetails(s.id),
-                    className: 'text-blue-500'
-                  },
-                  {
-                    icon: <Trash2 className="w-4 h-4" />,
-                    label: 'Delete',
-                    onClick: (s) => handleDeleteStatement(s.id),
-                    className: 'text-red-500'
-                  }
-                ]}
-              />
-            </div>
-          </div>
-          
           <div className="space-y-2">
             <h3 className="text-xs font-black text-white uppercase flex items-center gap-1.5 px-1">
-               <FileText className="w-3.5 h-3.5 text-slate-500" />
-               Recent Payouts
+               <History className="w-3.5 h-3.5 text-blue-500" />
+               Statement History
             </h3>
             <DataTable
-              data={commissions}
-              columns={commissionColumns}
+              data={statements}
+              columns={historyColumns}
               loading={loading}
               pageSize={10}
               actions={[
                 {
-                  icon: <DollarSign className="w-4 h-4" />,
-                  label: 'Pay',
-                  onClick: (c) => { if (!c.isPaid) { setSelectedCommission(c); setShowPayoutModal(true); } },
-                  className: (c) => c.isPaid ? 'hidden' : 'text-green-500'
-                }
-              ]}
-            />
-          </div>
-        </div>
-      )}
-
-      {showPayoutModal && selectedCommission && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
-              <h3 className="font-bold text-white text-sm">Payout: {selectedCommission.advisorName}</h3>
-              <button onClick={() => setShowPayoutModal(false)}><X className="w-4 h-4 text-slate-500" /></button>
-            </div>
-            <div className="p-4 space-y-4">
-               <div className="text-center p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Amount Due</p>
-                  <p className="text-2xl font-black text-green-500">R {selectedCommission.commissionAmount.toLocaleString()}</p>
-               </div>
-               <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Reference</label>
-                  <input type="text" value={payoutRef} onChange={(e) => setPayoutRef(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500" />
-               </div>
-               <button onClick={handleMarkAsPaid} disabled={paying || !payoutRef} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all text-sm disabled:opacity-50">
-                {paying ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirm Payout'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+                  icon: <ChevronRight className="w-4 h-4" />,
+                  label: 'View Details',
+                  onClick: (s) => loadStatementDetails(s.id),
+                  className: 'text-blue-500'
+                },
+                {
+                  icon: <Trash2 className="w-4 h-4" />,
+                  label: 'Delete',
+                  onClick: (s) => handleDeleteStatement(s.id),
+                  className: 'text-red-500'
+                  }
+                  ]}
+                  />
+                  </div>
+                  </div>
+                  </div>
+                  )}
       {isSearchModalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
@@ -1107,7 +1197,7 @@ const FinancialsPage: React.FC = () => {
                           ))}
                         </div>
                         <div className="text-right">
-                          <p className="text-xs font-black text-white">R {sub.premium.toLocaleString()}</p>
+                          <p className="text-xs font-black text-white">R {sub.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                           <p className="text-[9px] text-slate-500 uppercase font-bold">{new Date(sub.date).toLocaleDateString()}</p>
                         </div>
                         <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg group-hover:bg-blue-500 group-hover:text-white transition-all">
@@ -1392,13 +1482,13 @@ const FinancialsPage: React.FC = () => {
                       </div>
                       <div>
                         <h4 className="text-lg font-black text-white">{row.name}</h4>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Gross Commission: R {row.commission.toLocaleString()}</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Gross Commission: R {row.commission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                       </div>
                     </div>
                     <div className="text-right">
                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Net Payout</p>
                        <p className="text-2xl font-black text-emerald-500">
-                         R {(row.commission - Object.values(deductions[row.advisorId] || {}).reduce((a, b) => a + b, 0)).toLocaleString()}
+                         R {(row.commission - Object.values(deductions[row.advisorId] || {}).reduce((a, b) => a + b, 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                        </p>
                     </div>
                   </div>
@@ -1406,39 +1496,51 @@ const FinancialsPage: React.FC = () => {
                   {row.adjustments.length > 0 ? (
                     <div className="p-6 space-y-4 bg-slate-900/20">
                       <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Wallet className="w-3 h-3 text-amber-500" /> Outstanding Adjustments
+                        <Wallet className="w-3 h-3 text-amber-500" /> Outstanding Adjustments (Grouped)
                       </h5>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {row.adjustments.map(adj => (
-                          <div key={adj.id} className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-2xl flex items-center justify-between">
-                            <div className="flex-1">
-                              <p className="text-xs font-bold text-white">{adj.description}</p>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase mt-1">Due: R {adj.remainingBalance.toLocaleString()}</p>
-                            </div>
-                            <div className="w-32">
-                              <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Deduct Now</label>
-                              <div className="relative">
-                                <input 
-                                  type="number" 
-                                  max={adj.remainingBalance}
-                                  value={deductions[row.advisorId][adj.id]}
-                                  onChange={(e) => {
-                                    const val = Math.min(parseFloat(e.target.value) || 0, adj.remainingBalance);
-                                    setDeductions(prev => ({
-                                      ...prev,
-                                      [row.advisorId]: {
-                                        ...prev[row.advisorId],
-                                        [adj.id]: val
-                                      }
-                                    }));
-                                  }}
-                                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-bold outline-none focus:ring-1 focus:ring-amber-500/50"
-                                />
-                                <span className="absolute right-2 top-1.5 text-[10px] text-slate-600 font-bold pointer-events-none">R</span>
+                        {/* Group by type for the UI */}
+                        {Object.entries(row.adjustments.reduce((acc, adj) => {
+                          if (!acc[adj.type]) acc[adj.type] = { type: adj.type, total: 0, items: [] };
+                          acc[adj.type].total += adj.remainingBalance;
+                          acc[adj.type].items.push(adj);
+                          return acc;
+                        }, {} as { [key: number]: { type: number, total: number, items: any[] } })).map(([typeStr, group]) => {
+                          const type = parseInt(typeStr);
+                          const typeLabel = ['Advance', 'Promotional Item', 'Damage', 'Maintenance', 'Event Fee', 'Other'][type] || 'Other';
+                          
+                          return (
+                            <div key={type} className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-2xl flex items-center justify-between">
+                              <div className="flex-1">
+                                <p className="text-xs font-black text-white uppercase tracking-tight">{typeLabel}</p>
+                                <p className="text-[9px] text-slate-500 font-bold mt-1">Total Due: R {group.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                <p className="text-[8px] text-slate-600 italic">({group.items.length} {group.items.length === 1 ? 'record' : 'records'})</p>
+                              </div>
+                              <div className="w-32">
+                                <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Deduct Total</label>
+                                <div className="relative">
+                                  <input 
+                                    type="number" 
+                                    max={group.total}
+                                    value={deductions[row.advisorId][type] || 0}
+                                    onChange={(e) => {
+                                      const val = Math.min(parseFloat(e.target.value) || 0, group.total);
+                                      setDeductions(prev => ({
+                                        ...prev,
+                                        [row.advisorId]: {
+                                          ...prev[row.advisorId],
+                                          [type]: val
+                                        }
+                                      }));
+                                    }}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-bold outline-none focus:ring-1 focus:ring-amber-500/50"
+                                  />
+                                  <span className="absolute right-2 top-1.5 text-[10px] text-slate-600 font-bold pointer-events-none">R</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ) : (
