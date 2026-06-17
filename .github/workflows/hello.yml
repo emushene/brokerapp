@@ -32,3 +32,8 @@ jobs:
       # 5. Run tests (if any exist)
       - name: Run tests
         run: dotnet test brokerApp.API --no-build || true
+
+      # 6. Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t brokerapp-api:latest -f brokerApp.API/Dockerfile .
