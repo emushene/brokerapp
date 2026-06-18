@@ -48,10 +48,22 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
             _logger.LogInformation("Starting Google Drive synchronization for {Count} root folders...", rootFolderIds.Length);
             
             GoogleCredential credential;
-            using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
+            var serviceAccountJson = _configuration["GoogleDrive:ServiceAccountJson"];
+            
+            if (!string.IsNullOrEmpty(serviceAccountJson))
             {
-                credential = GoogleCredential.FromStream(stream)
+                _logger.LogInformation("Google Drive Sync: Loading credentials from Secret Manager (JSON)");
+                credential = GoogleCredential.FromJson(serviceAccountJson)
                     .CreateScoped(DriveService.Scope.DriveMetadataReadonly);
+            }
+            else
+            {
+                _logger.LogInformation("Google Drive Sync: Loading credentials from {Path}", keyFilePath);
+                using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
+                {
+                    credential = GoogleCredential.FromStream(stream)
+                        .CreateScoped(DriveService.Scope.DriveMetadataReadonly);
+                }
             }
 
             var service = new DriveService(new BaseClientService.Initializer()

@@ -1,6 +1,7 @@
 using brokerApp.API.Data;
 using brokerApp.API.Repositories;
 using brokerApp.API.Services;
+using brokerApp.API.Configuration;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,16 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var firebaseProjectId = builder.Configuration["Firebase:ProjectId"];
+// Load secrets from Google Secret Manager
+var gcpProjectId = builder.Configuration["GCP:ProjectId"] ?? "project-d4757723-0bc3-412e-b9f";
+builder.Configuration.AddGoogleSecrets(gcpProjectId, new Dictionary<string, string>
+{
+    { "ConnectionStrings:DefaultConnection", "broker-db-connection-string" },
+    { "Firebase:AdminKeyJson", "firebase-admin-key" },
+    { "GoogleDrive:ServiceAccountJson", "google-drive-service-account" }
+});
+
+var firebaseProjectId = builder.Configuration["Firebase:ProjectId"] ?? builder.Configuration["Firebase:AdminKeyJson:project_id"];
 
 // --------------------
 // SERVICES

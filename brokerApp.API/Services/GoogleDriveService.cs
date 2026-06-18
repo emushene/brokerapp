@@ -16,10 +16,20 @@ public class GoogleDriveService : IFileStorageService
 
     public GoogleDriveService(IConfiguration configuration)
     {
-        var keyFilePath = configuration["GoogleDrive:KeyFilePath"] ?? "broker-app-key.json";
-        
-        GoogleCredential credential = GoogleCredential.FromFile(keyFilePath)
+        var serviceAccountJson = configuration["GoogleDrive:ServiceAccountJson"];
+        GoogleCredential credential;
+
+        if (!string.IsNullOrEmpty(serviceAccountJson))
+        {
+            credential = GoogleCredential.FromJson(serviceAccountJson)
                 .CreateScoped(DriveService.Scope.DriveFile);
+        }
+        else
+        {
+            var keyFilePath = configuration["GoogleDrive:KeyFilePath"] ?? "broker-app-key.json";
+            credential = GoogleCredential.FromFile(keyFilePath)
+                .CreateScoped(DriveService.Scope.DriveFile);
+        }
 
         _driveService = new DriveService(new BaseClientService.Initializer()
         {

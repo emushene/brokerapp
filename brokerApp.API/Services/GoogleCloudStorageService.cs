@@ -16,25 +16,35 @@ public class GoogleCloudStorageService : IFileStorageService
     public GoogleCloudStorageService(IConfiguration configuration, ILogger<GoogleCloudStorageService> logger)
     {
         _logger = logger;
-        var keyFilePath = configuration["GoogleDrive:KeyFilePath"] ?? "broker-app-key.json";
         
-        if (File.Exists(keyFilePath))
+        var serviceAccountJson = configuration["GoogleDrive:ServiceAccountJson"];
+        if (!string.IsNullOrEmpty(serviceAccountJson))
         {
-            _logger.LogInformation("GCS: Loading credentials from {Path}", keyFilePath);
-            _credential = GoogleCredential.FromFile(keyFilePath);
+            _logger.LogInformation("GCS: Loading credentials from Secret Manager (JSON)");
+            _credential = GoogleCredential.FromJson(serviceAccountJson);
         }
-        else
+        else 
         {
-            var apiPath = Path.Combine("brokerApp.API", keyFilePath);
-            if (File.Exists(apiPath))
+            var keyFilePath = configuration["GoogleDrive:KeyFilePath"] ?? "broker-app-key.json";
+            
+            if (File.Exists(keyFilePath))
             {
-                _logger.LogInformation("GCS: Loading credentials from fallback {Path}", apiPath);
-                _credential = GoogleCredential.FromFile(apiPath);
+                _logger.LogInformation("GCS: Loading credentials from {Path}", keyFilePath);
+                _credential = GoogleCredential.FromFile(keyFilePath);
             }
             else
             {
-                _logger.LogWarning("GCS: Key file not found, using Application Default Credentials");
-                _credential = GoogleCredential.GetApplicationDefault();
+                var apiPath = Path.Combine("brokerApp.API", keyFilePath);
+                if (File.Exists(apiPath))
+                {
+                    _logger.LogInformation("GCS: Loading credentials from fallback {Path}", apiPath);
+                    _credential = GoogleCredential.FromFile(apiPath);
+                }
+                else
+                {
+                    _logger.LogWarning("GCS: Key file not found, using Application Default Credentials");
+                    _credential = GoogleCredential.GetApplicationDefault();
+                }
             }
         }
 

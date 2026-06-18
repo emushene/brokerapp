@@ -28,28 +28,40 @@ public class GoogleSheetsService : IGoogleSheetsService
 
     private async Task<GoogleCredential> GetCredentialAsync()
     {
-        var keyFilePath = _configuration["GoogleDrive:KeyFilePath"] ?? "broker-app-key.json";
-        _logger.LogInformation("Loading Google Drive credentials from: {Path}", keyFilePath);
-        
-        if (!File.Exists(keyFilePath))
+        GoogleCredential credential;
+        var serviceAccountJson = _configuration["GoogleDrive:ServiceAccountJson"];
+
+        if (!string.IsNullOrEmpty(serviceAccountJson))
         {
-            // Try looking in the API project folder specifically
-            var apiPath = Path.Combine("brokerApp.API", keyFilePath);
-            if (File.Exists(apiPath))
+            _logger.LogInformation("Google Sheets: Loading credentials from Secret Manager (JSON)");
+            credential = GoogleCredential.FromJson(serviceAccountJson);
+        }
+        else
+        {
+            var keyFilePath = _configuration["GoogleDrive:KeyFilePath"] ?? "broker-app-key.json";
+            _logger.LogInformation("Loading Google Drive credentials from: {Path}", keyFilePath);
+            
+            if (!File.Exists(keyFilePath))
             {
-                keyFilePath = apiPath;
-                _logger.LogInformation("Found key file at fallback path: {Path}", keyFilePath);
+                // Try looking in the API project folder specifically
+                var apiPath = Path.Combine("brokerApp.API", keyFilePath);
+                if (File.Exists(apiPath))
+                {
+                    keyFilePath = apiPath;
+                    _logger.LogInformation("Found key file at fallback path: {Path}", keyFilePath);
+                }
+                else
+                {
+                    _logger.LogError("Google Drive Key file not found at: {Path} or {ApiPath}", 
+                        Path.GetFullPath(keyFilePath), Path.GetFullPath(apiPath));
+                    throw new FileNotFoundException("Google Drive Key file not found", keyFilePath);
+                }
             }
-            else
-            {
-                _logger.LogError("Google Drive Key file not found at: {Path} or {ApiPath}", 
-                    Path.GetFullPath(keyFilePath), Path.GetFullPath(apiPath));
-                throw new FileNotFoundException("Google Drive Key file not found", keyFilePath);
-            }
+
+            using var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read);
+            credential = await GoogleCredential.FromStreamAsync(stream, CancellationToken.None);
         }
 
-        using var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read);
-        var credential = await GoogleCredential.FromStreamAsync(stream, CancellationToken.None);
         return credential.CreateScoped(
             SheetsService.Scope.Spreadsheets,
             DriveService.Scope.DriveFile,
