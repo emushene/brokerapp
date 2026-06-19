@@ -64,3 +64,8 @@ Thumbs.db
 *.log
 *.xlsx
 items.txt
+
+# Local terraform artifacts (keep workspace state out of repo)
+infra/terraform/**/terraform.tfstate
+infra/terraform/**/terraform.tfstate.backup
+infra/terraform/**/plan-output.txt

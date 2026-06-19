@@ -94,3 +94,31 @@ Pod → KSA → GSA → Secret Manager
 
 ## 🧠 Summary
 Production-grade SRE platform using Terraform + GCP + Kubernetes + Identity-based security.
+
+---
+
+## 🔐 Secrets management & importing
+
+The `secrets` module enables the Secret Manager API and can manage secret resources and versions. If secrets were created manually (outside Terraform), import them into the environment state to avoid `409 Already exists` errors.
+
+Run these commands from `infra/terraform/environment/dev` (replace the project id if different):
+
+```bash
+terraform import 'module.secrets.google_secret_manager_secret.this["broker-db-connection-string"]' 'projects/project-d4757723-0bc3-412e-b9f/secrets/broker-db-connection-string'
+terraform import 'module.secrets.google_secret_manager_secret.this["firebase-admin-key"]' 'projects/project-d4757723-0bc3-412e-b9f/secrets/firebase-admin-key'
+terraform import 'module.secrets.google_secret_manager_secret.this["google-drive-service-account"]' 'projects/project-d4757723-0bc3-412e-b9f/secrets/google-drive-service-account'
+```
+
+If you also want Terraform to manage secret values (secret versions), import secret versions or create them via the module. Example (optional):
+
+```bash
+# import a specific version (replace VERSION_ID as needed)
+terraform import 'module.secrets.google_secret_manager_secret_version.this["broker-db-connection-string:1"]' 'projects/project-d4757723-0bc3-412e-b9f/secrets/broker-db-connection-string/versions/1'
+```
+
+Security notes:
+- Do NOT commit secret values or plaintext credentials to version control. Use secure variable files or a secrets pipeline for values.
+- Each secret must have at least one version (the application reads `latest`).
+- Ensure the Kubernetes ServiceAccount (`broker-api-sa`) is created and your Deployment sets `serviceAccountName: broker-api-sa` so Workload Identity is used.
+
+After importing, run `terraform plan` to verify a clean state and then `terraform apply` when ready.
