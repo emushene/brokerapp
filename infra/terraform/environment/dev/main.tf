@@ -35,6 +35,20 @@ module "secrets" {
   project_id = var.project_id
 }
 
+module "postgres" {
+  source = "../../modules/postgres"
+
+  project_id               = var.project_id
+  region                   = var.region
+  instance_name            = "broker-postgres"
+  connection_string_secret = "projects/${var.project_id}/secrets/broker-db-connection-string"
+  network                  = module.network.vpc_id
+  require_private_ip       = true
+  tier                     = "db-e2-micro"
+  backup_enabled           = true
+  deletion_protection      = false
+}
+
 module "iam" {
   source = "../../modules/iam"
 

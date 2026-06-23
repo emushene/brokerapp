@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -83,6 +86,32 @@ builder.Services
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.AddOpenTelemetryTracing(tracerProviderBuilder =>
+{
+    tracerProviderBuilder
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Configuration["OTEL_SERVICE_NAME"] ?? "brokerapp-api"))
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddEntityFrameworkCoreInstrumentation()
+        .AddOtlpExporter(opt =>
+        {
+            opt.Endpoint = new Uri(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? "http://localhost:4317");
+        });
+});
+
+builder.Services.AddOpenTelemetryMetrics(metricsBuilder =>
+{
+    metricsBuilder
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(builder.Configuration["OTEL_SERVICE_NAME"] ?? "brokerapp-api"))
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddRuntimeInstrumentation()
+        .AddPrometheusExporter(opt =>
+        {
+            opt.ScrapeEndpointPath = "/metrics";
+        });
+});
+
 // --------------------
 // SWAGGER FIX (THIS IS WHAT YOU ARE MISSING)
 // --------------------
@@ -142,5 +171,7 @@ app.UseAuthentication();   // ✔ Firebase validation
 app.UseAuthorization();    // ✔ [Authorize] enforcement
 
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
+app.MapPrometheusScrapingEndpoint("/metrics");
 
 app.Run();

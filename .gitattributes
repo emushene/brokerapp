@@ -1,6 +1,23 @@
+# Auto-detect text files and normalize in-repo line endings
+* text=auto
+
+# Force LF in the repository for common text/code files
 *.tf     text eol=lf
 *.tfvars text eol=lf
 *.sh     text eol=lf
-*.md     text=auto
-.ps1     text eol=crlf
-.psm1    text eol=crlf
+*.md     text eol=lf
+*.json   text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+
+# Keep PowerShell scripts with CRLF on Windows
+*.ps1    text eol=crlf
+*.psm1   text eol=crlf
+
+# Binary files
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.zip    binary
+*.jar    binary

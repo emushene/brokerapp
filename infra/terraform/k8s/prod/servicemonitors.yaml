@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector-sm
+  namespace: prod
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+  namespaceSelector:
+    matchNames:
+      - prod
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: brokerapp-api-sm
+  namespace: prod
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: brokerapp-api
+  namespaceSelector:
+    matchNames:
+      - prod
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
