@@ -10,21 +10,26 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using OpenTelemetry.Metrics;
+using Prometheus;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Load secrets from Google Secret Manager
 var gcpProjectId = builder.Configuration["GCP:ProjectId"] ?? "project-d4757723-0bc3-412e-b9f";
-builder.Configuration.AddGoogleSecrets(gcpProjectId, new Dictionary<string, string>
-{
-    { "ConnectionStrings:DefaultConnection", "broker-db-connection-string" },
-    { "Firebase:AdminKeyJson", "firebase-admin-key" },
-    { "GoogleDrive:ServiceAccountJson", "google-drive-service-account" }
-});
 
-var firebaseProjectId = builder.Configuration["Firebase:ProjectId"] ?? builder.Configuration["Firebase:AdminKeyJson:project_id"];
+builder.Configuration.AddGoogleSecrets(
+    gcpProjectId,
+    new Dictionary<string, string>
+    {
+        { "ConnectionStrings:DefaultConnection", "broker-db-connection-string" },
+        { "Firebase:AdminKeyJson", "firebase-admin-key" },
+        { "GoogleDrive:ServiceAccountJson", "google-drive-service-account" }
+    });
+
+var firebaseProjectId =
+    builder.Configuration["Firebase:ProjectId"]
+    ?? builder.Configuration["Firebase:AdminKeyJson:project_id"];
 
 // --------------------
 // SERVICES
@@ -34,7 +39,8 @@ var firebaseProjectId = builder.Configuration["Firebase:ProjectId"] ?? builder.C
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.ReferenceHandler =
+            ReferenceHandler.IgnoreCycles;
     });
 
 // FluentValidation
@@ -47,7 +53,7 @@ builder.Services.AddAutoMapper(typeof(Program));
 // Caching
 builder.Services.AddMemoryCache();
 
-// IHttpContextAccessor (for Service layer identity)
+// IHttpContextAccessor
 builder.Services.AddHttpContextAccessor();
 
 // Repositories & Services
@@ -59,93 +65,109 @@ builder.Services.AddScoped<IFileStorageService, GoogleCloudStorageService>();
 builder.Services.AddScoped<IGoogleDriveSyncService, GoogleDriveSyncService>();
 builder.Services.AddScoped<IGoogleSheetsService, GoogleSheetsService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
 builder.Services.AddHostedService<GoogleDriveSyncWorker>();
 
 // --------------------
-// FIREBASE AUTH FIXED
+// FIREBASE AUTH SETUP
 // --------------------
+
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = $"https://securetoken.google.com/{firebaseProjectId}";
+        options.Authority =
+            $"https://securetoken.google.com/{firebaseProjectId}";
 
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = $"https://securetoken.google.com/{firebaseProjectId}",
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer =
+                    $"https://securetoken.google.com/{firebaseProjectId}",
 
-            ValidateAudience = true,
-            ValidAudience = firebaseProjectId,
+                ValidateAudience = true,
+                ValidAudience = firebaseProjectId,
 
-            ValidateLifetime = true
-        };
+                ValidateLifetime = true
+            };
     });
 
-// PostgreSQL DbContext
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// --------------------
+// POSTGRESQL DB
+// --------------------
 
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection"));
+});
+
+// --------------------
+// OPENTELEMETRY TRACING
+// --------------------
 
 builder.Services
     .AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService(
-        builder.Configuration["OTEL_SERVICE_NAME"] ?? "brokerapp-api"))
+    .ConfigureResource(resource =>
+        resource.AddService(
+            builder.Configuration["OTEL_SERVICE_NAME"]
+            ?? "brokerapp-api"))
     .WithTracing(tracing =>
     {
         tracing
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
             .AddEntityFrameworkCoreInstrumentation()
-            .AddOtlpExporter(opt =>
+            .AddOtlpExporter(options =>
             {
-                opt.Endpoint = new Uri(
+                options.Endpoint = new Uri(
                     builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]
-                    ?? "http://localhost:4317");
+                    ?? "http://otel-collector:4317");
             });
-    })
-    .WithMetrics(metrics =>
-    {
-        metrics
-            .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-            .AddRuntimeInstrumentation()
-            .AddPrometheusExporter();
     });
+
 // --------------------
-// SWAGGER FIX (THIS IS WHAT YOU ARE MISSING)
+// SWAGGER
 // --------------------
+
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(options =>
 {
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Enter Firebase JWT token"
-    });
-
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
+    options.AddSecurityDefinition(
+        "Bearer",
+        new OpenApiSecurityScheme
         {
-            new OpenApiSecurityScheme
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description = "Enter Firebase JWT token"
+        });
+
+    options.AddSecurityRequirement(
+        new OpenApiSecurityRequirement
+        {
             {
-                Reference = new OpenApiReference
+                new OpenApiSecurityScheme
                 {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            new string[] {}
-        }
-    });
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
 });
 
-// CORS (for React later)
+// --------------------
+// CORS
+// --------------------
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy =>
@@ -167,11 +189,22 @@ app.UseSwaggerUI();
 
 app.UseCors("AllowReact");
 
-app.UseAuthentication();   // ✔ Firebase validation
-app.UseAuthorization();    // ✔ [Authorize] enforcement
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Prometheus metrics
+app.UseHttpMetrics();
 
 app.MapControllers();
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
-app.MapPrometheusScrapingEndpoint("/metrics");
+
+app.MapGet("/health", () =>
+    Results.Ok(new
+    {
+        status = "Healthy",
+        timestamp = DateTime.UtcNow
+    }));
+
+// Prometheus scrape endpoint
+app.MapMetrics();
 
 app.Run();
