@@ -19,9 +19,11 @@ public class SubmissionRepository : ISubmissionRepository
         return submission;
     }
 
-    public async Task<IEnumerable<Submission>> GetAllAsync(int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<Submission> Items, int TotalCount)> GetAllAsync(int page = 1, int pageSize = 1000)
     {
-        return await _context.Submissions
+        var query = _context.Submissions;
+        var totalCount = await query.CountAsync();
+        var items = await query
             .Include(s => s.Advisors)
             .Include(s => s.AdvisorGroup)
             .Include(s => s.Documents)
@@ -29,11 +31,15 @@ public class SubmissionRepository : ISubmissionRepository
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
+        return (items, totalCount);
     }
 
-    public async Task<IEnumerable<Submission>> GetByAdvisorIdAsync(string firebaseId, int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<Submission> Items, int TotalCount)> GetByAdvisorIdAsync(string firebaseId, int page = 1, int pageSize = 1000)
     {
-        return await _context.Submissions
+        var query = _context.Submissions
+            .Where(s => s.Advisors.Any(a => a.FirebaseId == firebaseId));
+        var totalCount = await query.CountAsync();
+        var items = await query
             .Include(s => s.Advisors)
             .Include(s => s.AdvisorGroup)
             .Include(s => s.Documents)
@@ -42,11 +48,15 @@ public class SubmissionRepository : ISubmissionRepository
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
+        return (items, totalCount);
     }
 
-    public async Task<IEnumerable<Submission>> GetByInternalAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<Submission> Items, int TotalCount)> GetByInternalAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 1000)
     {
-        return await _context.Submissions
+        var query = _context.Submissions
+            .Where(s => s.Advisors.Any(a => a.Id == advisorId));
+        var totalCount = await query.CountAsync();
+        var items = await query
             .Include(s => s.Advisors)
             .Include(s => s.AdvisorGroup)
             .Include(s => s.Documents)
@@ -55,6 +65,7 @@ public class SubmissionRepository : ISubmissionRepository
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
+        return (items, totalCount);
     }
 
     public async Task<IEnumerable<Advisor>> GetAdvisorsByIdsAsync(IEnumerable<int> ids)
@@ -86,7 +97,7 @@ public class SubmissionRepository : ISubmissionRepository
             .FirstOrDefaultAsync(s => s.Id == id);
     }
 
-    public async Task<IEnumerable<Submission>> SearchAsync(string query, int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<Submission> Items, int TotalCount)> SearchAsync(string query, int page = 1, int pageSize = 1000)
     {
         if (string.IsNullOrWhiteSpace(query)) return await GetAllAsync(page, pageSize);
         
@@ -94,20 +105,26 @@ public class SubmissionRepository : ISubmissionRepository
         // Create a version of the query without spaces/dots for initials comparison
         var strippedQuery = $"%{query.Replace(".", "").Replace(" ", "")}%";
 
-        return await _context.Submissions
-            .Include(s => s.Advisors)
-            .Include(s => s.AdvisorGroup)
-            .Include(s => s.Documents)
+        var baseQuery = _context.Submissions
             .Where(s => EF.Functions.ILike(s.PolicyNumber, q) || 
                         EF.Functions.ILike(s.ApplicantSurname, q) || 
                         EF.Functions.ILike(s.IdNumber, q) ||
                         EF.Functions.ILike(s.Initials, q) ||
-                        EF.Functions.ILike(s.Initials.Replace(".", "").Replace(" ", ""), strippedQuery))
+                        EF.Functions.ILike(s.Initials.Replace(".", "").Replace(" ", ""), strippedQuery));
+
+        var totalCount = await baseQuery.CountAsync();
+
+        var items = await baseQuery
+            .Include(s => s.Advisors)
+            .Include(s => s.AdvisorGroup)
+            .Include(s => s.Documents)
             .OrderByDescending(s => s.ApplicantSurname.ToLower() == query.ToLower() || s.PolicyNumber.ToLower() == query.ToLower() || s.IdNumber == query)
             .ThenByDescending(s => s.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
+
+        return (items, totalCount);
     }
 
     public async Task SaveChangesAsync()

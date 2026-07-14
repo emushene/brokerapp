@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FilePlus, TrendingUp, Users, Activity, ChevronRight, RefreshCw, CheckCircle2 } from 'lucide-react';
-import api, { syncApi } from './lib/api';
+import { submissionsApi, syncApi } from './lib/api';
 import type { Submission } from './lib/types';
 
 const Dashboard: React.FC = () => {
@@ -13,10 +13,11 @@ const Dashboard: React.FC = () => {
 
   const fetchSubmissions = async () => {
     try {
-      const response = await api.get('/Submissions/all');
-      setSubmissions(response.data);
+      const data = await submissionsApi.getAll();
+      setSubmissions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching submissions', error);
+      setSubmissions([]);
     } finally {
       setLoading(false);
     }
@@ -43,7 +44,7 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const totalPremium = submissions.reduce((sum, s) => sum + s.premium, 0);
+  const totalPremium = Array.isArray(submissions) ? submissions.reduce((sum, s) => sum + (s.premium || 0), 0) : 0;
 
   const stats = [
     { label: 'Total Submissions', value: submissions.length, icon: FilePlus, color: 'text-blue-500', bg: 'bg-blue-500/10' },

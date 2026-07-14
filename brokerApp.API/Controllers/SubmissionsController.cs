@@ -32,12 +32,14 @@ public class SubmissionsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisor([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisor([FromQuery] int page = 1, [FromQuery] int pageSize = 1000)
     {
         try
         {
-            var submissions = await _submissionService.GetAdvisorSubmissionsAsync(page, pageSize);
-            return Ok(submissions);
+            var (items, totalCount) = await _submissionService.GetAdvisorSubmissionsAsync(page, pageSize);
+            Response.Headers["X-Total-Count"] = totalCount.ToString();
+            Response.Headers["Access-Control-Expose-Headers"] = "X-Total-Count";
+            return Ok(items);
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -46,24 +48,30 @@ public class SubmissionsController : ControllerBase
     }
 
     [HttpGet("advisor/{advisorId}")]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisorId(int advisorId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetByAdvisorId(int advisorId, [FromQuery] int page = 1, [FromQuery] int pageSize = 1000)
     {
-        var submissions = await _submissionService.GetSubmissionsByAdvisorIdAsync(advisorId, page, pageSize);
-        return Ok(submissions);
+        var (items, totalCount) = await _submissionService.GetSubmissionsByAdvisorIdAsync(advisorId, page, pageSize);
+        Response.Headers["X-Total-Count"] = totalCount.ToString();
+        Response.Headers["Access-Control-Expose-Headers"] = "X-Total-Count";
+        return Ok(items);
     }
 
     [HttpGet("all")]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 1000)
     {
-        var submissions = await _submissionService.GetAllSubmissionsAsync(page, pageSize);
-        return Ok(submissions);
+        var (items, totalCount) = await _submissionService.GetAllSubmissionsAsync(page, pageSize);
+        Response.Headers["X-Total-Count"] = totalCount.ToString();
+        Response.Headers["Access-Control-Expose-Headers"] = "X-Total-Count";
+        return Ok(items);
     }
 
     [HttpGet("search")]
-    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    public async Task<ActionResult<IEnumerable<SubmissionResponseDto>>> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 1000)
     {
-        var submissions = await _submissionService.SearchSubmissionsAsync(q, page, pageSize);
-        return Ok(submissions);
+        var (items, totalCount) = await _submissionService.SearchSubmissionsAsync(q, page, pageSize);
+        Response.Headers["X-Total-Count"] = totalCount.ToString();
+        Response.Headers["Access-Control-Expose-Headers"] = "X-Total-Count";
+        return Ok(items);
     }
 
     [HttpPost("{id}/documents")]

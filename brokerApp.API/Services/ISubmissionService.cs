@@ -5,9 +5,9 @@ namespace brokerApp.API.Services;
 public interface ISubmissionService
 {
     Task<SubmissionResponseDto> CreateSubmissionAsync(SubmissionCreateDto dto);
-    Task<IEnumerable<SubmissionResponseDto>> GetAdvisorSubmissionsAsync(int page = 1, int pageSize = 50);
-    Task<IEnumerable<SubmissionResponseDto>> GetAllSubmissionsAsync(int page = 1, int pageSize = 50);
-    Task<IEnumerable<SubmissionResponseDto>> GetSubmissionsByAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 50);
+    Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetAdvisorSubmissionsAsync(int page = 1, int pageSize = 1000);
+    Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetAllSubmissionsAsync(int page = 1, int pageSize = 1000);
+    Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetSubmissionsByAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 1000);
     Task<SubmissionResponseDto> UploadDocumentAsync(int submissionId, IFormFile file);
-    Task<IEnumerable<SubmissionResponseDto>> SearchSubmissionsAsync(string query, int page = 1, int pageSize = 50);
+    Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> SearchSubmissionsAsync(string query, int page = 1, int pageSize = 1000);
 }

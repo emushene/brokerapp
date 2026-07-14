@@ -128,15 +128,16 @@ public class SubmissionService : ISubmissionService
         return _mapper.Map<SubmissionResponseDto>(submission);
     }
 
-    public async Task<IEnumerable<SubmissionResponseDto>> GetAdvisorSubmissionsAsync(int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetAdvisorSubmissionsAsync(int page = 1, int pageSize = 1000)
     {
         var advisorId = GetFirebaseUserId();
         var cacheKey = $"{_cacheKeyPrefix}Advisor_{advisorId}_{page}_{pageSize}";
 
-        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        if (!_cache.TryGetValue(cacheKey, out (IEnumerable<SubmissionResponseDto> Items, int TotalCount) result))
         {
-            var submissions = await _repository.GetByAdvisorIdAsync(advisorId, page, pageSize);
-            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            var (submissions, totalCount) = await _repository.GetByAdvisorIdAsync(advisorId, page, pageSize);
+            var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            result = (mapped, totalCount);
 
             var cacheOptions = new MemoryCacheEntryOptions()
                 .SetSlidingExpiration(TimeSpan.FromMinutes(5))
@@ -146,17 +147,18 @@ public class SubmissionService : ISubmissionService
             _cache.Set(cacheKey, result, cacheOptions);
         }
         
-        return result ?? Enumerable.Empty<SubmissionResponseDto>();
+        return result;
     }
 
-    public async Task<IEnumerable<SubmissionResponseDto>> GetAllSubmissionsAsync(int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetAllSubmissionsAsync(int page = 1, int pageSize = 1000)
     {
         var cacheKey = $"{_cacheKeyPrefix}All_{page}_{pageSize}";
 
-        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        if (!_cache.TryGetValue(cacheKey, out (IEnumerable<SubmissionResponseDto> Items, int TotalCount) result))
         {
-            var submissions = await _repository.GetAllAsync(page, pageSize);
-            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            var (submissions, totalCount) = await _repository.GetAllAsync(page, pageSize);
+            var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            result = (mapped, totalCount);
 
             var cacheOptions = new MemoryCacheEntryOptions()
                 .SetSlidingExpiration(TimeSpan.FromMinutes(5))
@@ -166,17 +168,18 @@ public class SubmissionService : ISubmissionService
             _cache.Set(cacheKey, result, cacheOptions);
         }
 
-        return result ?? Enumerable.Empty<SubmissionResponseDto>();
+        return result;
     }
 
-    public async Task<IEnumerable<SubmissionResponseDto>> GetSubmissionsByAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetSubmissionsByAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 1000)
     {
         var cacheKey = $"{_cacheKeyPrefix}InternalAdvisor_{advisorId}_{page}_{pageSize}";
 
-        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        if (!_cache.TryGetValue(cacheKey, out (IEnumerable<SubmissionResponseDto> Items, int TotalCount) result))
         {
-            var submissions = await _repository.GetByInternalAdvisorIdAsync(advisorId, page, pageSize);
-            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            var (submissions, totalCount) = await _repository.GetByInternalAdvisorIdAsync(advisorId, page, pageSize);
+            var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            result = (mapped, totalCount);
 
             var cacheOptions = new MemoryCacheEntryOptions()
                 .SetSlidingExpiration(TimeSpan.FromMinutes(5))
@@ -186,7 +189,7 @@ public class SubmissionService : ISubmissionService
             _cache.Set(cacheKey, result, cacheOptions);
         }
 
-        return result ?? Enumerable.Empty<SubmissionResponseDto>();
+        return result;
     }
 
     public async Task<SubmissionResponseDto> UploadDocumentAsync(int submissionId, IFormFile file)
@@ -217,14 +220,15 @@ public class SubmissionService : ISubmissionService
         return _mapper.Map<SubmissionResponseDto>(target);
     }
 
-    public async Task<IEnumerable<SubmissionResponseDto>> SearchSubmissionsAsync(string query, int page = 1, int pageSize = 50)
+    public async Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> SearchSubmissionsAsync(string query, int page = 1, int pageSize = 1000)
     {
         var cacheKey = $"{_cacheKeyPrefix}Search_{query}_{page}_{pageSize}";
 
-        if (!_cache.TryGetValue(cacheKey, out IEnumerable<SubmissionResponseDto>? result))
+        if (!_cache.TryGetValue(cacheKey, out (IEnumerable<SubmissionResponseDto> Items, int TotalCount) result))
         {
-            var submissions = await _repository.SearchAsync(query, page, pageSize);
-            result = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            var (submissions, totalCount) = await _repository.SearchAsync(query, page, pageSize);
+            var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+            result = (mapped, totalCount);
 
             var cacheOptions = new MemoryCacheEntryOptions()
                 .SetSlidingExpiration(TimeSpan.FromMinutes(2)) // Shorter expiration for searches
@@ -234,6 +238,6 @@ public class SubmissionService : ISubmissionService
             _cache.Set(cacheKey, result, cacheOptions);
         }
 
-        return result ?? Enumerable.Empty<SubmissionResponseDto>();
+        return result;
     }
 }

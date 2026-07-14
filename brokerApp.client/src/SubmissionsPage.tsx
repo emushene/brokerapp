@@ -52,37 +52,41 @@ const SubmissionsPage: React.FC = () => {
   const [availableGroups, setAvailableGroups] = useState<AdvisorGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  
+  // Server-side pagination state
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+  const pageSize = 10;
 
-  // Payment Modal State
+  // Modals state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<string>('');
-  const [paymentRef, setPaymentRef] = useState<string>('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
   const [presentAdvisorIds, setPresentAdvisorIds] = useState<number[]>([]);
   const [recordingPayment, setRecordingPayment] = useState(false);
 
-  // Lapse Modal State
   const [showLapseModal, setShowLapseModal] = useState(false);
   const [submissionToLapse, setSubmissionToLapse] = useState<Submission | null>(null);
   const [lapsing, setLapsing] = useState(false);
 
-  // PDF Modal State
+  // Document viewer modal
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [selectedPdfUrl, setSelectedPdfUrl] = useState<string | null>(null);
 
-  // Document Upload State
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // File upload state for existing record
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Search state
-  const searchTimeout = useRef<any>(null);
-
-  // Dropdown state
+  // Advisor Search Dropdown in form
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [advisorSearch, setAdvisorSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<SubmissionFormValues>({
     resolver: zodResolver(submissionSchema),
@@ -99,11 +103,18 @@ const SubmissionsPage: React.FC = () => {
   const paymentMethod = watch('method');
   const selectedFile = watch('applicationForm');
 
-  const fetchSubmissions = async () => {
+  const fetchSubmissions = async (page = currentPage, term = searchTerm) => {
     try {
       setLoading(true);
-      const data = await submissionsApi.getAll();
-      setSubmissions(data);
+      if (term.trim()) {
+        const result = await submissionsApi.searchPaged(term, page, pageSize);
+        setSubmissions(result.items);
+        setTotalCount(result.totalCount);
+      } else {
+        const result = await submissionsApi.getAllPaged(page, pageSize);
+        setSubmissions(result.items);
+        setTotalCount(result.totalCount);
+      }
     } catch (error) {
       console.error('Error fetching submissions', error);
     } finally {
@@ -130,30 +141,22 @@ const SubmissionsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchSubmissions();
+    fetchSubmissions(1, '');
     fetchAdvisors();
     fetchGroups();
   }, []);
 
+  useEffect(() => {
+    fetchSubmissions(currentPage, searchTerm);
+  }, [currentPage]);
+
   const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    setCurrentPage(1);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
 
     searchTimeout.current = setTimeout(async () => {
-      try {
-        setLoading(true);
-        if (term.trim()) {
-          const data = await submissionsApi.search(term);
-          setSubmissions(data);
-        } else {
-          // If search is cleared, fetch the default list
-          const data = await submissionsApi.getAll();
-          setSubmissions(data);
-        }
-      } catch (error) {
-        console.error('Error searching submissions', error);
-      } finally {
-        setLoading(false);
-      }
+      fetchSubmissions(1, term);
     }, 500);
   };
 
@@ -763,6 +766,11 @@ const SubmissionsPage: React.FC = () => {
         loading={loading}
         onSearch={handleSearch}
         searchPlaceholder="Search applicants, ID numbers, or references..."
+        serverSide={true}
+        totalItems={totalCount}
+        currentPage={currentPage}
+        onPageChange={(page) => setCurrentPage(page)}
+        pageSize={pageSize}
       />
 
       {/* Payment Modal */}

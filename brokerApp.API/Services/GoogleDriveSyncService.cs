@@ -100,6 +100,7 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
                         folderListRequest.IncludeItemsFromAllDrives = true;
                         folderListRequest.Fields = "nextPageToken, files(id, name)";
                         folderListRequest.PageToken = pageToken;
+                        folderListRequest.PageSize = 1000;
                         
                         var result = await folderListRequest.ExecuteAsync();
                         folders.AddRange(result.Files);
@@ -136,21 +137,39 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
     {
         var files = new List<Google.Apis.Drive.v3.Data.File>();
         string? filePageToken = null;
-        do
+        try
         {
-            var fileListRequest = service.Files.List();
-            fileListRequest.Q = $"'{folder.Id}' in parents and mimeType = 'application/pdf' and trashed = false";
-            fileListRequest.SupportsAllDrives = true;
-            fileListRequest.IncludeItemsFromAllDrives = true;
-            fileListRequest.Fields = "nextPageToken, files(id, name, webViewLink, modifiedTime)";
-            fileListRequest.PageToken = filePageToken;
-            
-            var result = await fileListRequest.ExecuteAsync();
-            files.AddRange(result.Files);
-            filePageToken = result.NextPageToken;
-        } while (filePageToken != null);
+            do
+            {
+                var fileListRequest = service.Files.List();
+                fileListRequest.Q = $"'{folder.Id}' in parents and mimeType = 'application/pdf' and trashed = false";
+                fileListRequest.SupportsAllDrives = true;
+                fileListRequest.IncludeItemsFromAllDrives = true;
+                fileListRequest.Fields = "nextPageToken, files(id, name, webViewLink, modifiedTime)";
+                fileListRequest.PageToken = filePageToken;
+                fileListRequest.PageSize = 1000;
+                
+                var result = await fileListRequest.ExecuteAsync();
+                files.AddRange(result.Files);
+                filePageToken = result.NextPageToken;
+                _logger.LogInformation("Retrieved page with {Count} files, NextPageToken: {Token}", result.Files?.Count ?? 0, filePageToken ?? "null");
+            } while (filePageToken != null);
+        }
+        catch (Google.GoogleApiException apiEx)
+        {
+            _logger.LogError(apiEx, "Google API Error listing files in folder {FolderId}: {Message} (Code: {Code})", folder.Id, apiEx.Message, apiEx.HttpStatusCode);
+            if (apiEx.HttpStatusCode.ToString().Contains("403"))
+            {
+                _logger.LogError("Quota exceeded or permission denied. Stopping sync.");
+            }
+            return;
+        }
 
-        if (files.Count == 0) return;
+        if (files.Count == 0) 
+        {
+            _logger.LogInformation("No PDF files found in folder: {FolderName}", folder.Name);
+            return;
+        }
 
         _logger.LogInformation("Syncing {Count} files for folder: {FolderName} ({FolderId})", files.Count, folder.Name, folder.Id);
 

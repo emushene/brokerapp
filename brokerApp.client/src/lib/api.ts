@@ -3,7 +3,7 @@ import { auth } from './firebase';
 import type { Submission, SubmissionCreateDto, PolicyPaymentCreateDto, Commission, Advisor, CommissionStatement, AdvisorGroup, PromotionalItem, AccountAdjustment } from './types';
 
 const api = axios.create({
-  baseURL: '/api', // Use relative path for Nginx proxy
+  baseURL: '/api', // Use relative path for Vite dev proxy
 });
 
 // Interceptor to add Firebase JWT token to every request
@@ -26,6 +26,13 @@ export const submissionsApi = {
   getAll: async () => {
     const response = await api.get<Submission[]>('/Submissions/all');
     return response.data;
+  },
+  getAllPaged: async (page = 1, pageSize = 10) => {
+    const response = await api.get<Submission[]>(`/Submissions/all?page=${page}&pageSize=${pageSize}`);
+    return {
+      items: response.data,
+      totalCount: parseInt(response.headers['x-total-count'] || '0', 10)
+    };
   },
   getByAdvisorId: async (advisorId: number) => {
     const response = await api.get<Submission[]>(`/Submissions/advisor/${advisorId}`);
@@ -63,6 +70,13 @@ export const submissionsApi = {
   search: async (query: string) => {
     const response = await api.get<Submission[]>(`/Submissions/search?q=${encodeURIComponent(query)}`);
     return response.data;
+  },
+  searchPaged: async (query: string, page = 1, pageSize = 10) => {
+    const response = await api.get<Submission[]>(`/Submissions/search?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`);
+    return {
+      items: response.data,
+      totalCount: parseInt(response.headers['x-total-count'] || '0', 10)
+    };
   },
 };
 

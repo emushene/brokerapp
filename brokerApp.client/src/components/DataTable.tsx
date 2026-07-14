@@ -25,6 +25,11 @@ interface DataTableProps<T> {
   pageSize?: number;
   filterElement?: React.ReactNode;
   onSearch?: (term: string) => void;
+  // Server-side pagination support
+  serverSide?: boolean;
+  totalItems?: number;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
 }
 
 export function DataTable<T extends { id: string | number }>({
@@ -36,14 +41,27 @@ export function DataTable<T extends { id: string | number }>({
   pageSize = 10,
   filterElement,
   onSearch,
+  serverSide = false,
+  totalItems = 0,
+  currentPage: externalCurrentPage = 1,
+  onPageChange,
 }: DataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [internalCurrentPage, setInternalCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<{ key: number, direction: 'asc' | 'desc' } | null>(null);
+
+  const currentPage = serverSide ? externalCurrentPage : internalCurrentPage;
+  const setCurrentPage = (page: number) => {
+    if (serverSide) {
+      onPageChange?.(page);
+    } else {
+      setInternalCurrentPage(page);
+    }
+  };
 
   // Search logic
   const searchedData = useMemo(() => {
-    if (onSearch || !searchTerm) return data;
+    if (serverSide || onSearch || !searchTerm) return data;
     const lowerSearch = searchTerm.toLowerCase();
     
     return data.filter((item) => {
@@ -64,10 +82,11 @@ export function DataTable<T extends { id: string | number }>({
       
       return matchesCalculated;
     });
-  }, [data, searchTerm, columns]);
+  }, [data, searchTerm, columns, serverSide, onSearch]);
 
   // Sort logic
   const sortedData = useMemo(() => {
+    if (serverSide) return searchedData;
     if (!sortConfig) return searchedData;
 
     const column = columns[sortConfig.key];
@@ -94,14 +113,18 @@ export function DataTable<T extends { id: string | number }>({
     });
 
     return sorted;
-  }, [searchedData, sortConfig, columns]);
+  }, [searchedData, sortConfig, columns, serverSide]);
 
   // Pagination logic
-  const totalPages = Math.ceil(sortedData.length / pageSize);
+  const totalPages = serverSide 
+    ? Math.ceil(totalItems / pageSize) 
+    : Math.ceil(sortedData.length / pageSize);
+
   const currentData = useMemo(() => {
+    if (serverSide) return sortedData;
     const start = (currentPage - 1) * pageSize;
     return sortedData.slice(start, start + pageSize);
-  }, [sortedData, currentPage, pageSize]);
+  }, [sortedData, currentPage, pageSize, serverSide]);
 
   // Reset to page 1 on search
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -234,7 +257,13 @@ export function DataTable<T extends { id: string | number }>({
         {totalPages > 1 && (
           <div className="bg-slate-900/30 px-4 py-3 border-t border-slate-700/50 flex items-center justify-between">
             <div className="text-xs text-slate-500 font-medium">
-              Showing <span className="text-slate-300">{(currentPage - 1) * pageSize + 1}</span> to <span className="text-slate-300">{Math.min(currentPage * pageSize, sortedData.length)}</span> of <span className="text-slate-300">{sortedData.length}</span> entries
+              Showing <span className="text-slate-300">
+                {serverSide ? (totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1) : (sortedData.length === 0 ? 0 : (currentPage - 1) * pageSize + 1)}
+              </span> to <span className="text-slate-300">
+                {serverSide ? Math.min(currentPage * pageSize, totalItems) : Math.min(currentPage * pageSize, sortedData.length)}
+              </span> of <span className="text-slate-300">
+                {serverSide ? totalItems : sortedData.length}
+              </span> entries
             </div>
             <div className="flex gap-2">
               <button
