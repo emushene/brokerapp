@@ -192,9 +192,26 @@ public class FinancialsService : IFinancialsService
         var statement = await _context.CommissionStatements.FindAsync(dto.StatementId);
         if (advisor != null && statement != null && !string.IsNullOrEmpty(advisor.Email))
         {
-            var grossAmount = commissions.Sum(c => c.CommissionAmount);
-            var totalDeductions = dto.Deductions.Sum(d => d.Amount);
-            var netPayout = grossAmount - totalDeductions;
+            // Retrieve all commissions and deductions for this statement to calculate exact bank payout
+            var allCommissions = await _context.AdvisorCommissions
+                .Where(c => c.CommissionStatementId == dto.StatementId && c.AdvisorId == dto.AdvisorId)
+                .ToListAsync();
+
+            var netPayout = allCommissions.Sum(c => c.CommissionAmount);
+
+            // Enrich deduction lines with any previous deductions made during Conclusion run
+            var previousDeductions = allCommissions
+                .Where(c => c.AccountAdjustmentId.HasValue 
+                         && c.CommissionAmount < 0 
+                         && !dto.Deductions.Any(d => d.AdjustmentId == c.AccountAdjustmentId))
+                .ToList();
+
+            foreach (var prev in previousDeductions)
+            {
+                var label = prev.PayoutReference ?? "Deduction";
+                label = label.Replace("DEDUCTION: ", "");
+                deductionLines.Add($"{label}: -R{Math.Abs(prev.CommissionAmount):N2} (Previously Deducted)");
+            }
 
             try {
                 await _emailService.SendFinalPayslipNotificationAsync(
@@ -209,7 +226,7 @@ public class FinancialsService : IFinancialsService
         }
     }
 
-    public async Task HandleLapseAsync(int submissionId)
+    public async Task HandleLapseAsync(int submissionId, string? reason = null)
     {
         var submission = await _context.Submissions
             .Include(s => s.Advisors)
@@ -229,6 +246,8 @@ public class FinancialsService : IFinancialsService
         // Group by advisor to claw back everything they earned
         var commissionsByAdvisor = existingCommissions.GroupBy(c => c.AdvisorId);
 
+        var reasonStr = !string.IsNullOrEmpty(reason) ? reason : "Lapsed";
+
         foreach (var group in commissionsByAdvisor)
         {
             var totalToClawback = group.Sum(c => c.CommissionAmount);
@@ -241,7 +260,7 @@ public class FinancialsService : IFinancialsService
                     CommissionAmount = -totalToClawback, // Negative amount
                     DateCalculated = DateTime.UtcNow,
                     IsPaid = false, // This is a debt the advisor owes
-                    PayoutReference = "CLAWBACK - POLICY LAPSED"
+                    PayoutReference = $"CLAWBACK ({reasonStr.ToUpper()}) - POLICY LAPSED"
                 };
                 _context.AdvisorCommissions.Add(clawback);
             }
@@ -367,6 +386,12 @@ public class FinancialsService : IFinancialsService
                 var percentage = rate / 100m;
                 var commissionPerAdvisor = Math.Round((item.Amount * percentage) / advisorsToPay.Count, 2);
 
+                var payoutRef = $"{item.Category} - {item.PolicyNumber}";
+                if (item.Category == "Lapse" && !string.IsNullOrEmpty(item.ClawBackReason))
+                {
+                    payoutRef = $"CLAWBACK ({item.ClawBackReason}) - {item.PolicyNumber}";
+                }
+
                 var commission = new AdvisorCommission
                 {
                     SubmissionId = sub.Id,
@@ -374,7 +399,7 @@ public class FinancialsService : IFinancialsService
                     CommissionStatementId = item.CommissionStatementId,
                     CommissionAmount = commissionPerAdvisor,
                     DateCalculated = DateTime.UtcNow,
-                    PayoutReference = $"{item.Category} - {item.PolicyNumber}",
+                    PayoutReference = payoutRef,
                     IsPaid = false
                 };
                 _context.AdvisorCommissions.Add(commission);
@@ -475,7 +500,9 @@ public class FinancialsService : IFinancialsService
                         CommissionStatementId = item.CommissionStatementId,
                         CommissionAmount = -totalToClawback,
                         DateCalculated = DateTime.UtcNow,
-                        PayoutReference = $"CLAWBACK (LAPSE) - {item.PolicyNumber}",
+                        PayoutReference = (relatedStatementItem != null && !string.IsNullOrEmpty(relatedStatementItem.ClawBackReason)) 
+                            ? $"CLAWBACK ({relatedStatementItem.ClawBackReason}) - {item.PolicyNumber}" 
+                            : $"CLAWBACK (LAPSE) - {item.PolicyNumber}",
                         IsPaid = false
                     });
                 }
@@ -483,6 +510,145 @@ public class FinancialsService : IFinancialsService
         }
 
         await UpdateMasterPolicyAsync(item.PolicyNumber, sub, relatedStatementItem?.Amount ?? 0, item.Premium, item.Category == "Lapse", advisorsInvolved, effectiveGroupId);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task DirectAssignStatementItemAsync(int itemId, List<int> selectedAdvisorIds, int? advisorGroupId = null)
+    {
+        var item = await _context.StatementItems.FindAsync(itemId);
+        if (item == null) throw new Exception("Item not found");
+
+        item.MatchedSubmissionId = null;
+        item.IsConfirmed = true;
+
+        var advisorsToPay = await _context.Advisors
+            .Where(a => selectedAdvisorIds.Contains(a.Id))
+            .ToListAsync();
+
+        if (advisorGroupId.HasValue)
+        {
+            var group = await _context.AdvisorGroups.FindAsync(advisorGroupId.Value);
+            item.AdvisorName = $"Group: {group?.Name ?? "Unknown"} ({string.Join(", ", advisorsToPay.Select(a => a.Name))})";
+        }
+        else
+        {
+            item.AdvisorName = string.Join(", ", advisorsToPay.Select(a => a.Name));
+        }
+
+        if (advisorsToPay.Any())
+        {
+            var category = item.Category ?? "";
+            var isSecondYear = category.Contains("2nd") || category.Contains("Second");
+            
+            foreach (var advisor in advisorsToPay)
+            {
+                var rate = isSecondYear ? advisor.CommissionPercentage2ndYear : advisor.CommissionPercentage1stYear;
+                var percentage = rate / 100m;
+                var commissionPerAdvisor = Math.Round((item.Amount * percentage) / advisorsToPay.Count, 2);
+
+                var payoutRef = $"{item.Category} - {item.PolicyNumber} (Direct)";
+                if (item.Category == "Lapse" && !string.IsNullOrEmpty(item.ClawBackReason))
+                {
+                    payoutRef = $"CLAWBACK ({item.ClawBackReason}) - {item.PolicyNumber} (Direct)";
+                }
+
+                var commission = new AdvisorCommission
+                {
+                    SubmissionId = null,
+                    AdvisorId = advisor.Id,
+                    CommissionStatementId = item.CommissionStatementId,
+                    CommissionAmount = commissionPerAdvisor,
+                    DateCalculated = DateTime.UtcNow,
+                    PayoutReference = payoutRef,
+                    IsPaid = false
+                };
+                _context.AdvisorCommissions.Add(commission);
+            }
+        }
+
+        // Also update any matching movement item if it exists in the same statement
+        var relatedMovementItem = await _context.MovementItems
+            .FirstOrDefaultAsync(mi => mi.CommissionStatementId == item.CommissionStatementId 
+                                 && mi.PolicyNumber == item.PolicyNumber 
+                                 && !mi.IsConfirmed);
+        
+        if (relatedMovementItem != null)
+        {
+            relatedMovementItem.MatchedSubmissionId = null;
+            relatedMovementItem.IsConfirmed = true;
+            relatedMovementItem.AdvisorName = item.AdvisorName;
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task DirectAssignMovementItemAsync(int itemId, List<int> selectedAdvisorIds, int? advisorGroupId = null)
+    {
+        var item = await _context.MovementItems.FindAsync(itemId);
+        if (item == null) throw new Exception("Item not found");
+
+        item.MatchedSubmissionId = null;
+        item.IsConfirmed = true;
+
+        var advisorsInvolved = await _context.Advisors
+            .Where(a => selectedAdvisorIds.Contains(a.Id))
+            .ToListAsync();
+
+        if (advisorGroupId.HasValue)
+        {
+            var group = await _context.AdvisorGroups.FindAsync(advisorGroupId.Value);
+            item.AdvisorName = $"Group: {group?.Name ?? "Unknown"} ({string.Join(", ", advisorsInvolved.Select(a => a.Name))})";
+        }
+        else
+        {
+            item.AdvisorName = string.Join(", ", advisorsInvolved.Select(a => a.Name));
+        }
+
+        // CROSS-LINK: If there is a matching StatementItem, confirm it too!
+        var relatedStatementItem = await _context.StatementItems
+            .FirstOrDefaultAsync(si => si.CommissionStatementId == item.CommissionStatementId 
+                                 && si.PolicyNumber == item.PolicyNumber 
+                                 && !si.IsConfirmed);
+
+        if (relatedStatementItem != null)
+        {
+            relatedStatementItem.MatchedSubmissionId = null;
+            relatedStatementItem.IsConfirmed = true;
+            relatedStatementItem.AdvisorName = item.AdvisorName;
+
+            // Direct calculate StatementItem commissions since there is no submissionId
+            if (advisorsInvolved.Any())
+            {
+                var category = relatedStatementItem.Category ?? "";
+                var isSecondYear = category.Contains("2nd") || category.Contains("Second");
+                
+                foreach (var advisor in advisorsInvolved)
+                {
+                    var rate = isSecondYear ? advisor.CommissionPercentage2ndYear : advisor.CommissionPercentage1stYear;
+                    var percentage = rate / 100m;
+                    var commissionPerAdvisor = Math.Round((relatedStatementItem.Amount * percentage) / advisorsInvolved.Count, 2);
+
+                    var payoutRef = $"{relatedStatementItem.Category} - {relatedStatementItem.PolicyNumber} (Direct)";
+                    if (relatedStatementItem.Category == "Lapse" && !string.IsNullOrEmpty(relatedStatementItem.ClawBackReason))
+                    {
+                        payoutRef = $"CLAWBACK ({relatedStatementItem.ClawBackReason}) - {relatedStatementItem.PolicyNumber} (Direct)";
+                    }
+
+                    var commission = new AdvisorCommission
+                    {
+                        SubmissionId = null,
+                        AdvisorId = advisor.Id,
+                        CommissionStatementId = relatedStatementItem.CommissionStatementId,
+                        CommissionAmount = commissionPerAdvisor,
+                        DateCalculated = DateTime.UtcNow,
+                        PayoutReference = payoutRef,
+                        IsPaid = false
+                    };
+                    _context.AdvisorCommissions.Add(commission);
+                }
+            }
+        }
+
         await _context.SaveChangesAsync();
     }
 

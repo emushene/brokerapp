@@ -136,15 +136,14 @@ kubectl -n prod get svc
 - Tune resource requests/limits for the collector and API based on load testing.
 - Add alerting rules (Prometheus) for high latency, error-rate, or collector memory pressure.
 
-## Next steps (I can implement)
+## Next steeps
 
 - Add a production-ready Tempo Helm manifest (with GCS storage) and Wire collector to it.
 - Add TLS/auth to OTLP connections and create Kubernetes Secrets or use Workload Identity.
 - Add CI/CD steps to build/push container images and automatically update `image` tags in the `prod` manifests.
-
-If you want, I can:
+options:
 - generate the recommended Tempo Helm values and manifests tuned for GCS, and
 - patch `brokerApp.API/Program.cs` to include logging correlation and recommended env var configuration.
 
 ---
-This README was updated to include the current observability and Kubernetes manifests added to this repository. If you want a condensed deployment playbook or an automated Terraform+Helm pipeline, tell me which cloud project and storage backend you prefer and I will scaffold it.
+

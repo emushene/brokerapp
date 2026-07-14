@@ -9,9 +9,11 @@ public interface IFinancialsService
     Task<List<CommissionResponseDto>> GetCommissionsAsync(int? advisorId = null);
     Task MarkCommissionAsPaidAsync(int commissionId, string payoutReference);
     Task MarkAdvisorStatementAsPaidAsync(int advisorId, int statementId, string payoutReference);
-    Task HandleLapseAsync(int submissionId);
+    Task HandleLapseAsync(int submissionId, string? reason = null);
     Task ManualLinkStatementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null, int? advisorGroupId = null);
     Task ManualLinkMovementItemAsync(int itemId, int submissionId, List<int>? selectedAdvisorIds = null, int? advisorGroupId = null);
+    Task DirectAssignStatementItemAsync(int itemId, List<int> selectedAdvisorIds, int? advisorGroupId = null);
+    Task DirectAssignMovementItemAsync(int itemId, List<int> selectedAdvisorIds, int? advisorGroupId = null);
     Task ConcludeStatementAsync(int statementId);
     Task SettleAdvisorStatementAsync(BulkSettlementDto dto);
 

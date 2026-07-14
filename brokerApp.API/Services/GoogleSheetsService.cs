@@ -238,7 +238,7 @@ public class GoogleSheetsService : IGoogleSheetsService
         values.Add(new List<object> 
         { 
             "Policy Number", "Client Name", "Type", "Sub Type", "Premium", "Commission Amount", "Category", 
-            "Matched Advisor", "Scan Date", "Link to Scan" 
+            "Matched Advisor", "Sales Force Name", "ClawBack", "ClawBack (Retention)", "ClawBack Reason", "Scan Date", "Link to Scan" 
         });
 
         foreach (var item in items)
@@ -253,6 +253,10 @@ public class GoogleSheetsService : IGoogleSheetsService
                 item.Amount,
                 item.Category,
                 item.AdvisorName ?? "NOT MATCHED",
+                item.SalesForceName ?? "",
+                item.ClawBack ?? 0m,
+                item.ClawBackRetention ?? 0m,
+                item.ClawBackReason ?? "",
                 item.MatchedSubmission?.CreatedAt.ToString("yyyy-MM-dd HH:mm") ?? "",
                 item.GoogleDriveLink ?? ""
             });

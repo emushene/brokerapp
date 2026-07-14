@@ -71,6 +71,7 @@ const SubmissionsPage: React.FC = () => {
 
   const [showLapseModal, setShowLapseModal] = useState(false);
   const [submissionToLapse, setSubmissionToLapse] = useState<Submission | null>(null);
+  const [lapseReason, setLapseReason] = useState('Lapsed');
   const [lapsing, setLapsing] = useState(false);
 
   // Document viewer modal
@@ -86,7 +87,7 @@ const SubmissionsPage: React.FC = () => {
   const [advisorSearch, setAdvisorSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeout = useRef<any | null>(null);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<SubmissionFormValues>({
     resolver: zodResolver(submissionSchema),
@@ -252,9 +253,10 @@ const SubmissionsPage: React.FC = () => {
     if (!submissionToLapse) return;
     setLapsing(true);
     try {
-      await financialsApi.handleLapse(submissionToLapse.id);
+      await financialsApi.handleLapse(submissionToLapse.id, lapseReason);
       setShowLapseModal(false);
       setSubmissionToLapse(null);
+      setLapseReason('Lapsed'); // Reset
       fetchSubmissions();
     } catch (error) {
       console.error('Error lapsing submission:', error);
@@ -909,14 +911,32 @@ const SubmissionsPage: React.FC = () => {
               </button>
             </div>
             
-            <div className="p-6 space-y-6 text-center">
-              <div className="bg-red-600/10 border border-red-500/30 p-6 rounded-2xl flex flex-col items-center">
+            <div className="p-6 space-y-6">
+              <div className="bg-red-600/10 border border-red-500/30 p-6 rounded-2xl flex flex-col items-center text-center">
                 <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
                 <p className="text-white font-bold mb-2 text-lg">Are you sure?</p>
                 <p className="text-slate-400 text-sm leading-relaxed">
                   Lapsing this policy will mark it as inactive. <br/>
                   <span className="text-red-400 font-bold">ALL commissions paid so far will be clawed back</span> from the assigned advisors.
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Lapse / Clawback Reason</label>
+                <div className="relative">
+                  <select
+                    value={lapseReason}
+                    onChange={(e) => setLapseReason(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-bold text-white outline-none focus:ring-1 focus:ring-red-500/50 appearance-none cursor-pointer"
+                  >
+                    <option value="Lapsed">Lapsed</option>
+                    <option value="Exit">Exit</option>
+                    <option value="Replacement(Internal)">Replacement (Internal)</option>
+                  </select>
+                  <div className="absolute right-4 top-4.5 pointer-events-none text-slate-500 text-xs">
+                    ▼
+                  </div>
+                </div>
               </div>
             </div>
 

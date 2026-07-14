@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { DollarSign, TrendingUp, Calendar, Hash, Users, CheckCircle, X, Loader2, Upload, Activity, FileText, History, ChevronRight, FileSpreadsheet, AlertCircle, Filter, ExternalLink, Trash2, ShieldCheck, ShieldAlert, Search, Link, Wallet, Package, ArrowRight } from 'lucide-react';
+import { DollarSign, TrendingUp, Calendar, Hash, Users, CheckCircle, X, Loader2, Upload, Activity, FileText, History, ChevronRight, FileSpreadsheet, AlertCircle, Filter, ExternalLink, Trash2, ShieldCheck, ShieldAlert, Search, Link, Wallet, Package, ArrowRight, UserPlus } from 'lucide-react';
 import { financialsApi, submissionsApi, advisorsApi, advisorGroupsApi } from './lib/api';
 import type { Commission, CommissionStatement, StatementItem, MovementItem, Submission, AccountAdjustment, Advisor, AdvisorGroup } from './lib/types';
 import { DataTable } from './components/DataTable';
@@ -84,6 +84,14 @@ const FinancialsPage: React.FC = () => {
   
   // Confirmation for pre-matched items
   const [confirmingItem, setConfirmingItem] = useState<{ id: number, submission: Submission, type: 'statement' | 'movement' } | null>(null);
+
+  // Direct Assignment Modal State
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assigningItem, setAssigningItem] = useState<{ id: number, type: 'statement' | 'movement', policyNumber: string, amount: number, clientName: string } | null>(null);
+  const [assignSelectedAdvisorIds, setAssignSelectedAdvisorIds] = useState<number[]>([]);
+  const [assignSelectedGroupId, setAssignSelectedGroupId] = useState<number | null>(null);
+  const [assignOwnerType, setAssignOwnerType] = useState<'all' | 'group'>('all');
+  const [isAssigning, setIsAssigning] = useState(false);
 
   // Conclude Run / Deduction State
   const [showConcludeModal, setShowConcludeModal] = useState(false);
@@ -212,11 +220,31 @@ const FinancialsPage: React.FC = () => {
   };
 
   const handleConfirmStatementItem = async (item: StatementItem) => {
-    if (!item.matchedSubmission) return;
-    setConfirmingItem({ id: item.id, submission: item.matchedSubmission, type: 'statement' });
-    setPresentAdvisorIds(item.matchedSubmission.advisors.map(a => a.id));
-    setSelectedAdvisorGroupId(item.matchedSubmission.advisorGroupId || null);
-    setOwnerType('submission');
+    if (item.matchedSubmission) {
+      setConfirmingItem({ id: item.id, submission: item.matchedSubmission, type: 'statement' });
+      setPresentAdvisorIds(item.matchedSubmission.advisors.map(a => a.id));
+      setSelectedAdvisorGroupId(item.matchedSubmission.advisorGroupId || null);
+      setOwnerType('submission');
+    } else if (item.salesForceName) {
+      const matchedAdv = advisors.find(a => 
+        (a.salesforceName && a.salesforceName.toLowerCase() === item.salesForceName?.toLowerCase()) ||
+        (a.name && a.name.toLowerCase() === item.salesForceName?.toLowerCase())
+      );
+      if (matchedAdv) {
+        if (window.confirm(`No submission form matched, but Salesforce Name matches Advisor: "${matchedAdv.name}". Would you like to confirm and assign this policy directly to them?`)) {
+          try {
+            setLoading(true);
+            await financialsApi.directAssignStatementItem(item.id, [matchedAdv.id], undefined);
+            if (importResult) loadStatementDetails(importResult.id);
+            await fetchData();
+          } catch (error) {
+            console.error('Error confirming direct Salesforce match:', error);
+          } finally {
+            setLoading(false);
+          }
+        }
+      }
+    }
   };
 
   const handleConfirmMovementItem = async (item: MovementItem) => {
@@ -248,6 +276,35 @@ const FinancialsPage: React.FC = () => {
       if (importResult) loadStatementDetails(importResult.id);
     } catch (error) {
       console.error('Error confirming item:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDirectAssignSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assigningItem) return;
+    try {
+      setLoading(true);
+      const selectedIds = assignOwnerType === 'all' ? assignSelectedAdvisorIds : [];
+      const groupId = assignOwnerType === 'group' ? assignSelectedGroupId || undefined : undefined;
+
+      if (assigningItem.type === 'statement') {
+        await financialsApi.directAssignStatementItem(assigningItem.id, selectedIds, groupId);
+      } else {
+        await financialsApi.directAssignMovementItem(assigningItem.id, selectedIds, groupId);
+      }
+      
+      setIsAssignModalOpen(false);
+      setAssigningItem(null);
+      setAssignSelectedAdvisorIds([]);
+      setAssignSelectedGroupId(null);
+      setAssignOwnerType('all');
+      
+      if (importResult) loadStatementDetails(importResult.id);
+      await fetchData();
+    } catch (error) {
+      console.error('Error assigning advisor directly:', error);
     } finally {
       setLoading(false);
     }
@@ -605,6 +662,32 @@ const FinancialsPage: React.FC = () => {
       )
     },
     {
+      header: 'Sales Force Name',
+      accessor: (i) => <p className="text-xs font-semibold text-slate-400">{i.salesForceName || 'N/A'}</p>
+    },
+    {
+      header: 'Clawback',
+      accessor: (i) => <p className="text-xs font-bold text-red-400">{i.clawBack !== undefined && i.clawBack !== null ? `R ${i.clawBack.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R 0.00'}</p>
+    },
+    {
+      header: 'Clawback (Retention)',
+      accessor: (i) => <p className="text-xs font-bold text-orange-400">{i.clawBackRetention !== undefined && i.clawBackRetention !== null ? `R ${i.clawBackRetention.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R 0.00'}</p>
+    },
+    {
+      header: 'Clawback Reason',
+      accessor: (i) => (
+        i.clawBackReason ? (
+          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border tracking-tighter ${
+            i.clawBackReason.toLowerCase().includes('exit') 
+              ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+              : 'bg-red-500/10 text-red-400 border-red-500/20'
+          }`}>
+            {i.clawBackReason}
+          </span>
+        ) : <span className="text-xs text-slate-500">-</span>
+      )
+    },
+    {
       header: 'Category',
       accessor: (i) => <CategoryBadge category={i.category || 'Unknown'} />
     },
@@ -778,6 +861,18 @@ const FinancialsPage: React.FC = () => {
                     className: 'text-blue-500'
                   },
                   {
+                    icon: <UserPlus className="w-4 h-4" />,
+                    label: 'Assign Advisor',
+                    onClick: (i) => {
+                      setAssigningItem({ id: i.id, type: 'movement', policyNumber: i.policyNumber || '', amount: i.premium || 0, clientName: i.clientName || 'N/A' });
+                      setAssignSelectedAdvisorIds([]);
+                      setAssignSelectedGroupId(null);
+                      setAssignOwnerType('all');
+                      setIsAssignModalOpen(true);
+                    },
+                    className: (i) => i.isConfirmed ? 'hidden' : 'text-purple-400 hover:text-purple-300'
+                  },
+                  {
                     icon: <CheckCircle className="w-4 h-4" />,
                     label: 'Confirm',
                     onClick: (i) => handleConfirmMovementItem(i),
@@ -809,11 +904,43 @@ const FinancialsPage: React.FC = () => {
                     },
                     className: 'text-blue-500'
                   },
+                   {
+                    icon: <UserPlus className="w-4 h-4" />,
+                    label: 'Assign Advisor',
+                    onClick: (i) => {
+                      setAssigningItem({ id: i.id, type: 'statement', policyNumber: i.policyNumber || '', amount: i.amount || 0, clientName: i.clientName || 'N/A' });
+                      
+                      let preselectedIds: number[] = [];
+                      if (i.salesForceName) {
+                        const matchedAdv = advisors.find(a => 
+                          (a.salesforceName && a.salesforceName.toLowerCase() === i.salesForceName.toLowerCase()) ||
+                          (a.name && a.name.toLowerCase() === i.salesForceName.toLowerCase())
+                        );
+                        if (matchedAdv) {
+                          preselectedIds = [matchedAdv.id];
+                        }
+                      }
+                      
+                      setAssignSelectedAdvisorIds(preselectedIds);
+                      setAssignSelectedGroupId(null);
+                      setAssignOwnerType('all');
+                      setIsAssignModalOpen(true);
+                    },
+                    className: (i) => i.isConfirmed ? 'hidden' : 'text-purple-400 hover:text-purple-300'
+                  },
                   {
                     icon: <CheckCircle className="w-4 h-4" />,
                     label: 'Confirm',
                     onClick: (i) => handleConfirmStatementItem(i),
-                    className: (i) => i.isConfirmed ? 'hidden' : 'text-green-500'
+                    className: (i) => {
+                      if (i.isConfirmed) return 'hidden';
+                      const hasSubMatch = !!i.matchedSubmission;
+                      const hasSfMatch = i.salesForceName && advisors.some(a => 
+                        (a.salesforceName && a.salesforceName.toLowerCase() === i.salesForceName.toLowerCase()) ||
+                        (a.name && a.name.toLowerCase() === i.salesForceName.toLowerCase())
+                      );
+                      return (hasSubMatch || hasSfMatch) ? 'text-green-500' : 'hidden';
+                    }
                   }
                 ]}
               />
@@ -1225,6 +1352,163 @@ const FinancialsPage: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {isAssignModalOpen && assigningItem && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-500/10 rounded-xl">
+                  <UserPlus className="w-5 h-5 text-purple-500" />
+                </div>
+                <div>
+                  <h3 className="font-black text-white text-sm">Direct Advisor Assignment</h3>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Skip matching & route directly</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => {
+                  setIsAssignModalOpen(false);
+                  setAssigningItem(null);
+                }}
+                className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleDirectAssignSubmit} className="flex-1 overflow-hidden flex flex-col">
+              <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                {/* Statement Row Context Card */}
+                <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Policy Ref / Client</span>
+                      <p className="text-sm font-black text-white">{assigningItem.policyNumber || 'No Policy Number'}</p>
+                      <p className="text-xs text-slate-400">{assigningItem.clientName}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Amount / Comm</span>
+                      <p className="text-sm font-black text-emerald-400">R {assigningItem.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                      <span className="text-[9px] font-bold text-purple-400 uppercase bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded-full mt-1 inline-block tracking-widest">{assigningItem.type}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 px-1">
+                    <Users className="w-4 h-4 text-purple-500" />
+                    <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest">Routing Owner Type</h4>
+                  </div>
+
+                  <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800">
+                    <button 
+                      type="button"
+                      onClick={() => setAssignOwnerType('all')}
+                      className={`flex-1 text-center py-2.5 rounded-xl text-xs font-bold transition-all ${assignOwnerType === 'all' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      Individual Advisor(s)
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setAssignOwnerType('group')}
+                      className={`flex-1 text-center py-2.5 rounded-xl text-xs font-bold transition-all ${assignOwnerType === 'group' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      Advisor Group / Team
+                    </button>
+                  </div>
+
+                  {assignOwnerType === 'all' && (
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={advisorSearchQuery}
+                        onChange={(e) => setAdvisorSearchQuery(e.target.value)}
+                        placeholder="Filter advisors by name or code..."
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white outline-none focus:ring-1 focus:ring-purple-500/50"
+                      />
+                      <Search className="absolute left-3 top-3.5 w-3.5 h-3.5 text-slate-500" />
+                    </div>
+                  )}
+
+                  <div className="max-h-[250px] overflow-y-auto grid grid-cols-1 gap-2 pr-2 custom-scrollbar">
+                    {assignOwnerType === 'all' && advisors
+                      .filter(a => 
+                        a.name.toLowerCase().includes(advisorSearchQuery.toLowerCase()) || 
+                        a.code.toLowerCase().includes(advisorSearchQuery.toLowerCase())
+                      )
+                      .map(advisor => {
+                        const isPresent = assignSelectedAdvisorIds.includes(advisor.id);
+                        return (
+                          <div 
+                            key={advisor.id}
+                            onClick={() => {
+                              if (isPresent) {
+                                setAssignSelectedAdvisorIds(prev => prev.filter(id => id !== advisor.id));
+                              } else {
+                                setAssignSelectedAdvisorIds(prev => [...prev, advisor.id]);
+                              }
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
+                              isPresent ? 'bg-purple-600/10 border-purple-500/30 text-white' : 'bg-slate-950/40 border-transparent text-slate-500 opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black ${isPresent ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-600'}`}>
+                                {advisor.name.charAt(0)}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold">{advisor.name}</p>
+                                <p className="text-[10px] font-mono uppercase opacity-50">{advisor.code}</p>
+                              </div>
+                            </div>
+                            {isPresent && <ShieldCheck className="w-5 h-5 text-purple-500 animate-in zoom-in-50 duration-150" />}
+                          </div>
+                        );
+                    })}
+
+                    {assignOwnerType === 'group' && groups.map(group => {
+                      const isSelected = assignSelectedGroupId === group.id;
+                      return (
+                        <div 
+                          key={group.id}
+                          onClick={() => setAssignSelectedGroupId(group.id)}
+                          className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
+                            isSelected ? 'bg-orange-600/10 border-orange-500/30 text-white' : 'bg-slate-950/40 border-transparent text-slate-500 opacity-60'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black ${isSelected ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-600'}`}>
+                              G
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold">{group.name}</p>
+                              <p className="text-[10px] font-mono uppercase opacity-50">{group.members?.length || 0} Members</p>
+                            </div>
+                          </div>
+                          {isSelected && <ShieldCheck className="w-5 h-5 text-orange-500 animate-in zoom-in-50 duration-150" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-800 shrink-0">
+                <button 
+                  type="submit"
+                  disabled={loading || (assignOwnerType === 'all' && assignSelectedAdvisorIds.length === 0) || (assignOwnerType === 'group' && !assignSelectedGroupId)}
+                  className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-purple-600/20 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5" />}
+                  Assign Advisor & Route Commission
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

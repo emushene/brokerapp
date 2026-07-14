@@ -131,6 +131,7 @@ public class AdvisorsController : ControllerBase
             PhoneNumber = dto.PhoneNumber,
             CommissionPercentage1stYear = dto.CommissionPercentage1stYear,
             CommissionPercentage2ndYear = dto.CommissionPercentage2ndYear,
+            SalesforceName = dto.SalesforceName,
             FirebaseId = "" // This can be linked later when the user signs up
         };
 
@@ -152,6 +153,7 @@ public class AdvisorsController : ControllerBase
         advisor.PhoneNumber = dto.PhoneNumber;
         advisor.CommissionPercentage1stYear = dto.CommissionPercentage1stYear;
         advisor.CommissionPercentage2ndYear = dto.CommissionPercentage2ndYear;
+        advisor.SalesforceName = dto.SalesforceName;
 
         await _context.SaveChangesAsync();
         return NoContent();

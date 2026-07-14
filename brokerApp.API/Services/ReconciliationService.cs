@@ -68,6 +68,8 @@ public class ReconciliationService : IReconciliationService
             .Include(s => s.Documents)
             .ToListAsync();
 
+        var allAdvisors = await _context.Advisors.ToListAsync();
+
         // 1. Process "Movement" Sheet FIRST (Priority for status and registration)
         if (workbook.Worksheets.TryGetWorksheet("Movement", out var moveSheet))
         {
@@ -161,7 +163,7 @@ public class ReconciliationService : IReconciliationService
                 }
                 else
                 {
-                    var subMatch = FindMatch(policyNumber, clientName, allSubmissions, out bool isPolicyMatch);
+                    var subMatch = FindMatch(policyNumber, clientName, null, allSubmissions, allAdvisors, out bool isPolicyMatch);
                     if (subMatch != null)
                     {
                         // Fallback for premium if statement is missing it
@@ -213,6 +215,7 @@ public class ReconciliationService : IReconciliationService
             // Find columns dynamically
             var headerRow = commSheet.Row(1);
             int policyCol = 10, clientCol = 9, amountCol = 23, premCol = 12, typeCol = 2;
+            int salesForceCol = -1, clawbackCol = -1, clawbackRetentionCol = -1, clawbackReasonCol = -1;
 
             for (int c = 1; c <= headerRow.LastCellUsed().Address.ColumnNumber; c++)
             {
@@ -222,9 +225,14 @@ public class ReconciliationService : IReconciliationService
                 else if (val.Contains("nett") && !val.Contains("clawback")) amountCol = c;
                 else if (val.Contains("premium") || val.Contains("prem")) premCol = c;
                 else if (val.Contains("type") && val.Contains("commission") && !val.Contains("sub")) typeCol = c;
+                else if (val.Contains("salesforcename") || (val.Contains("sales") && val.Contains("force"))) salesForceCol = c;
+                else if (val.Contains("clawback") && val.Contains("gross")) clawbackCol = c;
+                else if (val.Contains("clawback") && val.Contains("retention")) clawbackRetentionCol = c;
+                else if (val.Contains("clawback") && val.Contains("reason")) clawbackReasonCol = c;
+                else if (val.Contains("clawback") && clawbackCol == -1) clawbackCol = c;
             }
 
-            _logger.LogInformation("CommDetails Columns: Policy={P}, Client={C}, Amount={A}, Premium={PR}, Type={T}", policyCol, clientCol, amountCol, premCol, typeCol);
+            _logger.LogInformation("CommDetails Columns: Policy={P}, Client={C}, Amount={A}, Premium={PR}, Type={T}, SalesForce={S}, ClawBack={CB}, ClawBackRet={CBR}, ClawBackReason={CBRS}", policyCol, clientCol, amountCol, premCol, typeCol, salesForceCol, clawbackCol, clawbackRetentionCol, clawbackReasonCol);
 
             var rows = commSheet.RowsUsed().Skip(1); 
             int commCount = 0;
@@ -250,6 +258,11 @@ public class ReconciliationService : IReconciliationService
                 var amount = ParseDecimal(row.Cell(amountCol).Value.ToString());
                 var premium = ParseDecimal(row.Cell(premCol).Value.ToString());
                 
+                var salesForceName = salesForceCol != -1 ? (string.IsNullOrWhiteSpace(row.Cell(salesForceCol).Value.ToString()) ? null : row.Cell(salesForceCol).Value.ToString().Trim()) : null;
+                var clawBack = clawbackCol != -1 ? ParseDecimal(row.Cell(clawbackCol).Value.ToString()) : 0;
+                var clawBackRetention = clawbackRetentionCol != -1 ? ParseDecimal(row.Cell(clawbackRetentionCol).Value.ToString()) : 0;
+                var clawBackReason = clawbackReasonCol != -1 ? (string.IsNullOrWhiteSpace(row.Cell(clawbackReasonCol).Value.ToString()) ? null : row.Cell(clawbackReasonCol).Value.ToString().Trim()) : null;
+
                 var category = isFirstYear ? "First Year Commission" : "Second Year Commission";
                 if (amount < 0) category = "Lapse";
 
@@ -261,7 +274,11 @@ public class ReconciliationService : IReconciliationService
                     CommissionSubType = subType,
                     Amount = amount,
                     Premium = premium,
-                    Category = category
+                    Category = category,
+                    SalesForceName = salesForceName,
+                    ClawBack = clawBack,
+                    ClawBackRetention = clawBackRetention,
+                    ClawBackReason = clawBackReason
                 };
 
                 // MATCHING & AUTO-REGISTRATION
@@ -297,7 +314,7 @@ public class ReconciliationService : IReconciliationService
                 }
                 else
                 {
-                    var subMatch = FindMatch(policyNumber, clientName, allSubmissions, out bool isPolicyMatch);
+                    var subMatch = FindMatch(policyNumber, clientName, salesForceName, allSubmissions, allAdvisors, out bool isPolicyMatch);
                     if (subMatch != null)
                     {
                         // Fallback for premium if statement is missing it
@@ -332,6 +349,19 @@ public class ReconciliationService : IReconciliationService
                         
                         statement.MatchedRows++;
                     }
+                    else if (!string.IsNullOrEmpty(salesForceName))
+                    {
+                        var matchingAdvisor = allAdvisors.FirstOrDefault(a => 
+                            (!string.IsNullOrEmpty(a.SalesforceName) && a.SalesforceName.Equals(salesForceName, StringComparison.OrdinalIgnoreCase)) ||
+                            (!string.IsNullOrEmpty(a.Name) && a.Name.Equals(salesForceName, StringComparison.OrdinalIgnoreCase))
+                        );
+
+                        if (matchingAdvisor != null)
+                        {
+                            item.AdvisorName = matchingAdvisor.Name;
+                            item.IsConfirmed = false;
+                        }
+                    }
                 }
 
                 statement.Items.Add(item);
@@ -359,9 +389,13 @@ public class ReconciliationService : IReconciliationService
                 reportCommSheet.Cell(1, 6).Value = "Commission Amount";
                 reportCommSheet.Cell(1, 7).Value = "Category";
                 reportCommSheet.Cell(1, 8).Value = "Matched Advisor";
-                reportCommSheet.Cell(1, 9).Value = "Scan Date";
-                reportCommSheet.Cell(1, 10).Value = "Link to Scan";
-                reportCommSheet.Range("A1:J1").Style.Font.Bold = true;
+                reportCommSheet.Cell(1, 9).Value = "Sales Force Name";
+                reportCommSheet.Cell(1, 10).Value = "ClawBack";
+                reportCommSheet.Cell(1, 11).Value = "ClawBack (Retention)";
+                reportCommSheet.Cell(1, 12).Value = "ClawBack Reason";
+                reportCommSheet.Cell(1, 13).Value = "Scan Date";
+                reportCommSheet.Cell(1, 14).Value = "Link to Scan";
+                reportCommSheet.Range("A1:N1").Style.Font.Bold = true;
 
                 int row = 2;
                 foreach (var item in statement.Items)
@@ -374,10 +408,14 @@ public class ReconciliationService : IReconciliationService
                     reportCommSheet.Cell(row, 6).Value = item.Amount;
                     reportCommSheet.Cell(row, 7).Value = item.Category;
                     reportCommSheet.Cell(row, 8).Value = item.AdvisorName ?? "NOT MATCHED";
-                    reportCommSheet.Cell(row, 9).Value = item.MatchedSubmission?.CreatedAt.ToString("yyyy-MM-dd HH:mm") ?? "";
-                    reportCommSheet.Cell(row, 10).Value = item.GoogleDriveLink ?? "";
+                    reportCommSheet.Cell(row, 9).Value = item.SalesForceName ?? "";
+                    reportCommSheet.Cell(row, 10).Value = item.ClawBack;
+                    reportCommSheet.Cell(row, 11).Value = item.ClawBackRetention;
+                    reportCommSheet.Cell(row, 12).Value = item.ClawBackReason ?? "";
+                    reportCommSheet.Cell(row, 13).Value = item.MatchedSubmission?.CreatedAt.ToString("yyyy-MM-dd HH:mm") ?? "";
+                    reportCommSheet.Cell(row, 14).Value = item.GoogleDriveLink ?? "";
                     if (!string.IsNullOrEmpty(item.GoogleDriveLink))
-                        reportCommSheet.Cell(row, 10).SetHyperlink(new XLHyperlink(item.GoogleDriveLink));
+                        reportCommSheet.Cell(row, 14).SetHyperlink(new XLHyperlink(item.GoogleDriveLink));
                     row++;
                 }
 
@@ -470,7 +508,7 @@ public class ReconciliationService : IReconciliationService
         return decimal.TryParse(cleanValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var result) ? result : 0;
     }
 
-    private Submission? FindMatch(string policyNumber, string clientName, List<Submission> submissions, out bool isPolicyMatch)
+    private Submission? FindMatch(string policyNumber, string clientName, string? salesForceName, List<Submission> submissions, List<Advisor> advisors, out bool isPolicyMatch)
     {
         isPolicyMatch = false;
         if (!string.IsNullOrEmpty(policyNumber))
@@ -493,6 +531,46 @@ public class ReconciliationService : IReconciliationService
             {
                 var surnameFromExcel = parts[0];
                 var initialsFromExcel = parts.Length > 1 ? parts[1].Trim() : "";
+
+                // Find advisor by SalesforceName if provided
+                Advisor? matchingAdvisor = null;
+                if (!string.IsNullOrEmpty(salesForceName))
+                {
+                    matchingAdvisor = advisors.FirstOrDefault(a => 
+                        (!string.IsNullOrEmpty(a.SalesforceName) && a.SalesforceName.Equals(salesForceName, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(a.Name) && a.Name.Equals(salesForceName, StringComparison.OrdinalIgnoreCase))
+                    );
+                }
+
+                // If advisor matches and we have a submission for that client belonging to that advisor, prioritize it!
+                if (matchingAdvisor != null)
+                {
+                    var strongMatch = submissions.FirstOrDefault(s =>
+                    {
+                        if (!s.ApplicantSurname.Equals(surnameFromExcel, StringComparison.OrdinalIgnoreCase))
+                            return false;
+
+                        if (s.Initials.Equals(initialsFromExcel, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return s.Advisors.Any(a => a.Id == matchingAdvisor.Id);
+                        }
+
+                        if (s.Initials.Length >= 2 && initialsFromExcel.Length >= 2)
+                        {
+                            var sInit = s.Initials.ToUpper();
+                            var eInit = initialsFromExcel.ToUpper();
+                            var swappedEInit = new string(new[] { eInit[1], eInit[0] }) + (eInit.Length > 2 ? eInit.Substring(2) : "");
+                            if (sInit.Equals(swappedEInit))
+                            {
+                                return s.Advisors.Any(a => a.Id == matchingAdvisor.Id);
+                            }
+                        }
+
+                        return false;
+                    });
+
+                    if (strongMatch != null) return strongMatch;
+                }
 
                 var match = submissions.FirstOrDefault(s =>
                 {

@@ -267,7 +267,7 @@ export function DataTable<T extends { id: string | number }>({
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
               >
@@ -279,7 +279,7 @@ export function DataTable<T extends { id: string | number }>({
                 <span className="text-xs font-medium text-slate-500">{totalPages}</span>
               </div>
               <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
               >

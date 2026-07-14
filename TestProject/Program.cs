@@ -1,57 +1,48 @@
 using System;
 using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-using Google.Apis.Auth.OAuth2;
-using Google.Apis.Drive.v3;
-using Google.Apis.Services;
+using ClosedXML.Excel;
 
 class Program
 {
-    static async Task Main(string[] args)
+    static void Main(string[] args)
     {
-        var keyFilePath = "../brokerApp.API/joska-fin-key.json";
-        var parentFolderId = "1xSb_7fIkfEjx_YMsPQDW-NrK82Ye54sG"; // ASSUPOL
+        var filePath = "../Jospet.xlsx";
+        if (!File.Exists(filePath))
+        {
+            Console.WriteLine($"File not found: {Path.GetFullPath(filePath)}");
+            return;
+        }
 
         try
         {
-            GoogleCredential credential;
-            using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
-            {
-                credential = await GoogleCredential.FromStreamAsync(stream, CancellationToken.None);
-                credential = credential.CreateScoped(DriveService.Scope.DriveMetadataReadonly);
-            }
+            using var workbook = new XLWorkbook(filePath);
+            Console.WriteLine($"Workbook loaded successfully: {filePath}");
+            Console.WriteLine($"Number of worksheets: {workbook.Worksheets.Count}");
 
-            var service = new DriveService(new BaseClientService.Initializer
+            foreach (var ws in workbook.Worksheets)
             {
-                HttpClientInitializer = credential,
-                ApplicationName = "FolderLister"
-            });
+                Console.WriteLine($"----------------------------------------");
+                Console.WriteLine($"Worksheet Name: '{ws.Name}'");
+                var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
+                var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
+                Console.WriteLine($"Used range: Rows 1 to {lastRow}, Cols 1 to {lastCol}");
 
-            Console.WriteLine($"Listing subfolders in ASSUPOL ({parentFolderId})...");
-            var request = service.Files.List();
-            request.Q = $"'{parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
-            request.Fields = "files(id, name)";
-            request.SupportsAllDrives = true;
-            request.IncludeItemsFromAllDrives = true;
-            
-            var result = await request.ExecuteAsync();
-
-            if (result.Files != null && result.Files.Count > 0)
-            {
-                foreach (var file in result.Files)
+                // Read first 5 rows
+                for (int r = 1; r <= Math.Min(10, lastRow); r++)
                 {
-                    Console.WriteLine($"- {file.Name} (ID: {file.Id})");
+                    var row = ws.Row(r);
+                    var cells = new System.Collections.Generic.List<string>();
+                    for (int c = 1; c <= lastCol; c++)
+                    {
+                        cells.Add(row.Cell(c).Value.ToString());
+                    }
+                    Console.WriteLine($"Row {r}: {string.Join(" | ", cells)}");
                 }
-            }
-            else
-            {
-                Console.WriteLine("No subfolders found.");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\nERROR: {ex.Message}");
+            Console.WriteLine($"ERROR: {ex.Message}");
         }
     }
 }

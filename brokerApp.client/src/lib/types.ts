@@ -29,6 +29,7 @@ export interface Advisor {
   phoneNumber: string;
   commissionPercentage1stYear: number;
   commissionPercentage2ndYear: number;
+  salesforceName?: string;
 }
 
 export interface AdvisorGroup {
@@ -126,6 +127,10 @@ export interface StatementItem {
   amount: number;
   premium: number;
   category?: string;
+  salesForceName?: string;
+  clawBack?: number;
+  clawBackRetention?: number;
+  clawBackReason?: string;
   matchedSubmissionId?: number;
   matchedSubmission?: Submission;
   advisorName?: string;

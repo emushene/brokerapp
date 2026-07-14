@@ -9,4 +9,5 @@ public class AdvisorDto
     public string PhoneNumber { get; set; } = string.Empty;
     public decimal CommissionPercentage1stYear { get; set; }
     public decimal CommissionPercentage2ndYear { get; set; }
+    public string? SalesforceName { get; set; }
 }

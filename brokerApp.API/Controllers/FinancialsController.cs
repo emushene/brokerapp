@@ -304,6 +304,20 @@ public class FinancialsController : ControllerBase
         }
     }
 
+    [HttpPost("submissions/{submissionId}/lapse")]
+    public async Task<IActionResult> LapseSubmission(int submissionId, [FromQuery] string? reason = null)
+    {
+        try
+        {
+            await _financialsService.HandleLapseAsync(submissionId, reason);
+            return Ok(new { message = "Policy lapsed and clawback records generated successfully." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpPost("bulk-settle")]
     public async Task<IActionResult> BulkSettle(BulkSettlementDto dto)
     {
@@ -379,6 +393,34 @@ public class FinancialsController : ControllerBase
         {
             await _financialsService.ManualLinkMovementItemAsync(id, dto.SubmissionId, dto.SelectedAdvisorIds, dto.AdvisorGroupId);
             return Ok(new { message = "Movement item linked and Master Policy updated." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("statement-items/{id}/direct-assign")]
+    public async Task<IActionResult> DirectAssignStatementItem(int id, [FromBody] DirectAssignDto dto)
+    {
+        try
+        {
+            await _financialsService.DirectAssignStatementItemAsync(id, dto.SelectedAdvisorIds, dto.AdvisorGroupId);
+            return Ok(new { message = "Item directly assigned to advisors." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("movement-items/{id}/direct-assign")]
+    public async Task<IActionResult> DirectAssignMovementItem(int id, [FromBody] DirectAssignDto dto)
+    {
+        try
+        {
+            await _financialsService.DirectAssignMovementItemAsync(id, dto.SelectedAdvisorIds, dto.AdvisorGroupId);
+            return Ok(new { message = "Movement item directly assigned to advisors." });
         }
         catch (Exception ex)
         {

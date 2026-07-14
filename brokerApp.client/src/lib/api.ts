@@ -139,8 +139,8 @@ export const financialsApi = {
   bulkSettle: async (data: { advisorId: number, statementId: number, payoutReference: string, deductions: { adjustmentId: number, amount: number }[] }) => {
     await api.post('/Financials/bulk-settle', data);
   },
-  handleLapse: async (submissionId: number) => {
-    await api.post(`/Financials/submissions/${submissionId}/lapse`);
+  handleLapse: async (submissionId: number, reason?: string) => {
+    await api.post(`/Financials/submissions/${submissionId}/lapse${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`);
   },
   importStatement: async (file: File, statementDate: string) => {
     const formData = new FormData();
@@ -175,6 +175,12 @@ export const financialsApi = {
   },
   linkMovementItem: async (itemId: number, submissionId: number, selectedAdvisorIds?: number[], advisorGroupId?: number) => {
     await api.post(`/Financials/movement-items/${itemId}/link`, { submissionId, selectedAdvisorIds, advisorGroupId });
+  },
+  directAssignStatementItem: async (itemId: number, selectedAdvisorIds: number[], advisorGroupId?: number) => {
+    await api.post(`/Financials/statement-items/${itemId}/direct-assign`, { selectedAdvisorIds, advisorGroupId });
+  },
+  directAssignMovementItem: async (itemId: number, selectedAdvisorIds: number[], advisorGroupId?: number) => {
+    await api.post(`/Financials/movement-items/${itemId}/direct-assign`, { selectedAdvisorIds, advisorGroupId });
   },
   concludeStatement: async (id: number) => {
     await api.post(`/Financials/statements/${id}/conclude`);

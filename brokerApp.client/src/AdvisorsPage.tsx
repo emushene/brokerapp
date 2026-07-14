@@ -17,6 +17,7 @@ const advisorSchema = z.object({
   phoneNumber: z.string().min(10, 'Phone number must be at least 10 digits'),
   commissionPercentage1stYear: z.coerce.number().min(0).max(100),
   commissionPercentage2ndYear: z.coerce.number().min(0).max(100),
+  salesforceName: z.string().optional(),
 });
 
 const groupSchema = z.object({
@@ -181,6 +182,7 @@ const AdvisorsPage: React.FC = () => {
     advisorForm.setValue('phoneNumber', advisor.phoneNumber);
     advisorForm.setValue('commissionPercentage1stYear', advisor.commissionPercentage1stYear);
     advisorForm.setValue('commissionPercentage2ndYear', advisor.commissionPercentage2ndYear);
+    advisorForm.setValue('salesforceName', advisor.salesforceName || '');
     setShowAdvisorModal(true);
   };
 
@@ -298,7 +300,14 @@ const AdvisorsPage: React.FC = () => {
       accessor: (advisor) => (
         <div>
           <div className="font-bold text-white">{advisor.name}</div>
-          <div className="text-[10px] text-slate-500 font-mono tracking-wider uppercase">Code: {advisor.code}</div>
+          <div className="flex flex-col gap-1 mt-1">
+            <span className="text-[10px] text-slate-500 font-mono tracking-wider uppercase">Code: {advisor.code}</span>
+            {advisor.salesforceName && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium tracking-wide w-fit">
+                Alias: {advisor.salesforceName}
+              </span>
+            )}
+          </div>
         </div>
       )
     },
@@ -906,6 +915,12 @@ const AdvisorsPage: React.FC = () => {
                   <input {...advisorForm.register('phoneNumber')} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
                   {advisorForm.formState.errors.phoneNumber && <p className="text-red-500 text-xs mt-1">{advisorForm.formState.errors.phoneNumber.message}</p>}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-300">Salesforce Name / Insurer Alias (Optional)</label>
+                <input {...advisorForm.register('salesforceName')} placeholder="e.g. J. JOSPET, SMITH J" className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 outline-none" />
+                <p className="text-[10px] text-slate-500">Add any variations used by insurers to match statements when policy numbers cannot link automatically.</p>
               </div>
 
               <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-6 space-y-4">

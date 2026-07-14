@@ -35,6 +35,11 @@ public class StatementItem
     public decimal Premium { get; set; }
     public string Category { get; set; } = "Unknown"; // Lapse, First Year, Second Year
     
+    public string? SalesForceName { get; set; }
+    public decimal? ClawBack { get; set; }
+    public decimal? ClawBackRetention { get; set; }
+    public string? ClawBackReason { get; set; }
+
     // Tracking the match
     public int? MatchedSubmissionId { get; set; }
     public Submission? MatchedSubmission { get; set; }
