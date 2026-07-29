@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { DollarSign, TrendingUp, Calendar, Hash, Users, CheckCircle, X, Loader2, Upload, Activity, FileText, History, ChevronRight, FileSpreadsheet, AlertCircle, Filter, ExternalLink, Trash2, ShieldCheck, ShieldAlert, Search, Link, Wallet, Package, ArrowRight, UserPlus } from 'lucide-react';
 import { financialsApi, submissionsApi, advisorsApi, advisorGroupsApi } from './lib/api';
-import type { Commission, CommissionStatement, StatementItem, MovementItem, Submission, AccountAdjustment, Advisor, AdvisorGroup } from './lib/types';
+import type { Commission, CommissionStatement, StatementItem, MovementItem, UnpayablePolicyItem, Submission, AccountAdjustment, Advisor, AdvisorGroup } from './lib/types';
 import { DataTable } from './components/DataTable';
 import type { Column } from './components/DataTable';
 
@@ -21,28 +21,27 @@ const CategoryBadge: React.FC<{ category: string }> = ({ category }) => {
   const cat = category?.toLowerCase() || 'unknown';
   if (cat.includes('lapse')) {
     return (
-      <span className="flex items-center gap-1 text-[9px] font-black bg-red-500/10 text-red-500 border border-red-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
-        <AlertCircle className="w-2.5 h-2.5" />
+      <span className="text-[10px] font-medium bg-rose-950/30 text-rose-300 border border-rose-800/40 px-2 py-0.5 rounded uppercase tracking-wider">
         Lapse
       </span>
     );
   }
   if (cat.includes('1st') || cat.includes('first')) {
     return (
-      <span className="text-[9px] font-black bg-blue-500/10 text-blue-500 border border-blue-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
+      <span className="text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded uppercase tracking-wider">
         1st Year
       </span>
     );
   }
   if (cat.includes('2nd') || cat.includes('second')) {
     return (
-      <span className="text-[9px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
+      <span className="text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded uppercase tracking-wider">
         2nd Year
       </span>
     );
   }
   return (
-    <span className="text-[9px] font-black bg-slate-500/10 text-slate-400 border border-slate-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
+    <span className="text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/80 px-2 py-0.5 rounded uppercase tracking-wider">
       {category}
     </span>
   );
@@ -457,6 +456,16 @@ const FinancialsPage: React.FC = () => {
     });
   }, [importResult, categoryFilter]);
 
+  const filteredUnpayableItems = useMemo(() => {
+    if (!importResult || !importResult.unpayableItems) return [];
+    if (categoryFilter === 'All') return importResult.unpayableItems;
+    return importResult.unpayableItems.filter(item => {
+      const reasonLower = (item.reason || '').toLowerCase();
+      if (categoryFilter === 'Lapse') return reasonLower.includes('cancellation') || reasonLower.includes('surrender');
+      return true;
+    });
+  }, [importResult, categoryFilter]);
+
   const groupedByAdvisor = useMemo(() => {
     if (!importResult) return [];
     
@@ -697,6 +706,56 @@ const FinancialsPage: React.FC = () => {
     }
   ];
 
+  const unpayableItemColumns: Column<UnpayablePolicyItem>[] = [
+    {
+      header: 'Policy Number',
+      accessor: (i) => (
+        <div className="flex items-center gap-2">
+           <Hash className="w-3 h-3 text-slate-500" />
+           <span className="font-mono text-xs font-bold text-white">{i.policyNumber || 'N/A'}</span>
+        </div>
+      )
+    },
+    {
+      header: 'Client Name',
+      accessor: (i) => (
+        <div>
+          <p className="text-xs font-bold text-slate-300">{i.clientName}</p>
+          {i.clientMobile && <p className="text-[10px] text-slate-500">{i.clientMobile}</p>}
+        </div>
+      )
+    },
+    {
+      header: 'Premium',
+      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+    },
+    {
+      header: 'Unpayable Reason',
+      accessor: (i) => (
+        <span className={`px-2 py-0.5 rounded text-[10px] font-medium border uppercase tracking-wider ${
+          i.reason.toLowerCase().includes('premium not received') 
+            ? 'bg-amber-950/30 text-amber-300 border-amber-800/40' 
+            : i.reason.toLowerCase().includes('replacement') 
+            ? 'bg-slate-800 text-slate-300 border-slate-700/80'
+            : i.reason.toLowerCase().includes('fraud') 
+            ? 'bg-rose-950/30 text-rose-300 border-rose-800/40'
+            : 'bg-slate-800 text-slate-300 border-slate-700/80'
+        }`}>
+          {i.reason}
+        </span>
+      )
+    },
+    {
+      header: 'Matched Advisor',
+      accessor: (i) => (
+        <div className="flex items-center gap-2">
+           <Users className="w-3.5 h-3.5 text-blue-400" />
+           <span className="text-xs font-semibold text-slate-300">{i.advisorName || 'Not Assigned'}</span>
+        </div>
+      )
+    }
+  ];
+
   const totalNet = commissions.filter(c => c.isPaid).reduce((sum, c) => sum + c.commissionAmount, 0);
 
   return (
@@ -912,9 +971,10 @@ const FinancialsPage: React.FC = () => {
                       
                       let preselectedIds: number[] = [];
                       if (i.salesForceName) {
+                        const sfName = i.salesForceName.toLowerCase();
                         const matchedAdv = advisors.find(a => 
-                          (a.salesforceName && a.salesforceName.toLowerCase() === i.salesForceName.toLowerCase()) ||
-                          (a.name && a.name.toLowerCase() === i.salesForceName.toLowerCase())
+                          (a.salesforceName && a.salesforceName.toLowerCase() === sfName) ||
+                          (a.name && a.name.toLowerCase() === sfName)
                         );
                         if (matchedAdv) {
                           preselectedIds = [matchedAdv.id];
@@ -925,26 +985,42 @@ const FinancialsPage: React.FC = () => {
                       setAssignSelectedGroupId(null);
                       setAssignOwnerType('all');
                       setIsAssignModalOpen(true);
+                      },
+                      className: (i) => i.isConfirmed ? 'hidden' : 'text-purple-400 hover:text-purple-300'
                     },
-                    className: (i) => i.isConfirmed ? 'hidden' : 'text-purple-400 hover:text-purple-300'
-                  },
-                  {
-                    icon: <CheckCircle className="w-4 h-4" />,
-                    label: 'Confirm',
-                    onClick: (i) => handleConfirmStatementItem(i),
-                    className: (i) => {
-                      if (i.isConfirmed) return 'hidden';
-                      const hasSubMatch = !!i.matchedSubmission;
-                      const hasSfMatch = i.salesForceName && advisors.some(a => 
-                        (a.salesforceName && a.salesforceName.toLowerCase() === i.salesForceName.toLowerCase()) ||
-                        (a.name && a.name.toLowerCase() === i.salesForceName.toLowerCase())
-                      );
-                      return (hasSubMatch || hasSfMatch) ? 'text-green-500' : 'hidden';
+                    {
+                      icon: <CheckCircle className="w-4 h-4" />,
+                      label: 'Confirm',
+                      onClick: (i) => handleConfirmStatementItem(i),
+                      className: (i) => {
+                        if (i.isConfirmed) return 'hidden';
+                        const hasSubMatch = !!i.matchedSubmission;
+                        const sfName = i.salesForceName ? i.salesForceName.toLowerCase() : null;
+                        const hasSfMatch = sfName ? advisors.some(a => 
+                          (a.salesforceName && a.salesforceName.toLowerCase() === sfName) ||
+                          (a.name && a.name.toLowerCase() === sfName)
+                        ) : false;
+                        return (hasSubMatch || hasSfMatch) ? 'text-green-500' : 'hidden';
+                      }
                     }
-                  }
                 ]}
               />
             </div>
+
+            {importResult.unpayableItems && importResult.unpayableItems.length > 0 && (
+              <div className="space-y-2 pt-4">
+                <h3 className="text-xs font-black text-white uppercase flex items-center gap-1.5 px-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                  Unpayable / Unpaid Policies ({importResult.unpayableItems.length})
+                </h3>
+                <DataTable 
+                  data={filteredUnpayableItems} 
+                  columns={unpayableItemColumns} 
+                  pageSize={8} 
+                  filterElement={filterElement}
+                />
+              </div>
+            )}
           </div>
         ) : (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">

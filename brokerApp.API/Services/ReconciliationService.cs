@@ -70,10 +70,27 @@ public class ReconciliationService : IReconciliationService
 
         var allAdvisors = await _context.Advisors.ToListAsync();
 
+        // Build fast O(1) Lookup Dictionaries
+        var masterPolicyMap = masterPolicies
+            .Where(p => !string.IsNullOrWhiteSpace(p.PolicyNumber))
+            .GroupBy(p => p.PolicyNumber.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var subPolicyMap = allSubmissions
+            .Where(s => !string.IsNullOrWhiteSpace(s.PolicyNumber))
+            .GroupBy(s => s.PolicyNumber.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var subSurnameMap = allSubmissions
+            .Where(s => !string.IsNullOrWhiteSpace(s.ApplicantSurname))
+            .GroupBy(s => s.ApplicantSurname.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
         // 1. Process "Movement" Sheet FIRST (Priority for status and registration)
-        if (workbook.Worksheets.TryGetWorksheet("Movement", out var moveSheet))
+        var movementSheetNames = new[] { "Movement", "Movements", "Weekly Movement", "Movement Report" };
+        if (TryFindWorksheet(workbook, movementSheetNames, out var moveSheet))
         {
-            _logger.LogInformation("Processing 'Movement' worksheet...");
+            _logger.LogInformation("Processing 'Movement' worksheet '{SheetName}'...", moveSheet.Name);
             
             // Find columns dynamically
             var headerRow = moveSheet.Row(1);
@@ -126,12 +143,14 @@ public class ReconciliationService : IReconciliationService
                     PolicyNumber = policyNumber,
                     MovementType = subType,
                     Premium = premium,
+                    Amount = amount,
                     EffectiveDate = row.Cell(dateCol).Value.IsDateTime ? row.Cell(dateCol).Value.GetDateTime().ToUniversalTime() : (DateTime?)null,
                     Category = category
                 };
 
                 // MATCHING & AUTO-REGISTRATION
-                var masterMatch = masterPolicies.FirstOrDefault(p => p.PolicyNumber.Equals(policyNumber, StringComparison.OrdinalIgnoreCase));
+                var pKey = policyNumber.Trim();
+                masterPolicyMap.TryGetValue(pKey, out var masterMatch);
                 if (masterMatch != null)
                 {
                     moveItem.IsConfirmed = masterMatch.IsConfirmed;
@@ -142,7 +161,7 @@ public class ReconciliationService : IReconciliationService
                     masterMatch.LastCommissionAmount = amount;
                     masterMatch.LastUpdated = DateTime.UtcNow;
 
-                    var subMatch = allSubmissions.FirstOrDefault(s => s.PolicyNumber.Equals(policyNumber, StringComparison.OrdinalIgnoreCase));
+                    subPolicyMap.TryGetValue(pKey, out var subMatch);
                     if (subMatch != null)
                     {
                         moveItem.MatchedSubmissionId = subMatch.Id;
@@ -159,11 +178,16 @@ public class ReconciliationService : IReconciliationService
                         if (subMatch != null) subMatch.Status = SubmissionStatus.Lapsed;
                         masterMatch.Status = SubmissionStatus.Lapsed;
                     }
+                    else if (amount > 0 && moveItem.IsConfirmed)
+                    {
+                        if (subMatch != null) subMatch.Status = SubmissionStatus.Active;
+                        masterMatch.Status = SubmissionStatus.Active;
+                    }
                     statement.MatchedRows++;
                 }
                 else
                 {
-                    var subMatch = FindMatch(policyNumber, clientName, null, allSubmissions, allAdvisors, out bool isPolicyMatch);
+                    var subMatch = FindMatch(policyNumber, clientName, null, allSubmissions, allAdvisors, out bool isPolicyMatch, premium, null, subPolicyMap, subSurnameMap);
                     if (subMatch != null)
                     {
                         // Fallback for premium if statement is missing it
@@ -208,31 +232,43 @@ public class ReconciliationService : IReconciliationService
         }
 
         // 2. Process "Commission Details" Sheet
-        if (workbook.Worksheets.TryGetWorksheet("Commission Details", out var commSheet))
+        var commSheetNames = new[] { "Commission Details", "Commission Detail", "Commissions", "Commission", "Commission_Details" };
+        if (TryFindWorksheet(workbook, commSheetNames, out var commSheet))
         {
-            _logger.LogInformation("Processing 'Commission Details' worksheet...");
+            _logger.LogInformation("Processing 'Commission Details' worksheet '{SheetName}'...", commSheet.Name);
 
             // Find columns dynamically
             var headerRow = commSheet.Row(1);
             int policyCol = 10, clientCol = 9, amountCol = 23, premCol = 12, typeCol = 2;
             int salesForceCol = -1, clawbackCol = -1, clawbackRetentionCol = -1, clawbackReasonCol = -1;
+            int productCol = -1, captureDateCol = -1, commGrossCol = -1, commRetCol = -1;
 
             for (int c = 1; c <= headerRow.LastCellUsed().Address.ColumnNumber; c++)
             {
                 var val = headerRow.Cell(c).Value.ToString().Replace(" ", "").Replace("(", "").Replace(")", "").ToLower();
                 if (val.Contains("policynumber")) policyCol = c;
                 else if (val.Contains("clientname")) clientCol = c;
+                else if (val.Contains("product")) productCol = c;
+                else if (val.Contains("capturedate") || val.Contains("datecaptured")) captureDateCol = c;
+                else if (val.Contains("commissiongross") || (val.Contains("gross") && !val.Contains("clawback"))) commGrossCol = c;
+                else if (val.Contains("commissionretention") || (val.Contains("retention") && !val.Contains("clawback"))) commRetCol = c;
                 else if (val.Contains("nett") && !val.Contains("clawback")) amountCol = c;
                 else if (val.Contains("premium") || val.Contains("prem")) premCol = c;
                 else if (val.Contains("type") && val.Contains("commission") && !val.Contains("sub")) typeCol = c;
                 else if (val.Contains("salesforcename") || (val.Contains("sales") && val.Contains("force"))) salesForceCol = c;
                 else if (val.Contains("clawback") && val.Contains("gross")) clawbackCol = c;
                 else if (val.Contains("clawback") && val.Contains("retention")) clawbackRetentionCol = c;
-                else if (val.Contains("clawback") && val.Contains("reason")) clawbackReasonCol = c;
+                else if (val.Contains("reason") || (val.Contains("clawback") && val.Contains("reason"))) clawbackReasonCol = c;
                 else if (val.Contains("clawback") && clawbackCol == -1) clawbackCol = c;
             }
 
-            _logger.LogInformation("CommDetails Columns: Policy={P}, Client={C}, Amount={A}, Premium={PR}, Type={T}, SalesForce={S}, ClawBack={CB}, ClawBackRet={CBR}, ClawBackReason={CBRS}", policyCol, clientCol, amountCol, premCol, typeCol, salesForceCol, clawbackCol, clawbackRetentionCol, clawbackReasonCol);
+            // Fallback for Column X (24) if clawbackReasonCol was not matched by header name
+            if (clawbackReasonCol == -1 && headerRow.LastCellUsed().Address.ColumnNumber >= 24)
+            {
+                clawbackReasonCol = 24;
+            }
+
+            _logger.LogInformation("CommDetails Columns: Policy={P}, Client={C}, Amount={A}, Premium={PR}, Type={T}, SalesForce={S}, Gross={CG}, CommRet={CR}, ClawBack={CB}, ClawBackRet={CBR}, ClawBackReason={CBRS}", policyCol, clientCol, amountCol, premCol, typeCol, salesForceCol, commGrossCol, commRetCol, clawbackCol, clawbackRetentionCol, clawbackReasonCol);
 
             var rows = commSheet.RowsUsed().Skip(1); 
             int commCount = 0;
@@ -245,13 +281,13 @@ public class ReconciliationService : IReconciliationService
 
                 var subType = row.Cell(typeCol).Value.ToString().Trim();
                 
-                // Strict Filtering: Only process First Year and Second Year Commission
-                var isFirstYear = subType.Equals("First Year Commission", StringComparison.OrdinalIgnoreCase);
-                var isSecondYear = subType.Equals("Second Year Commission", StringComparison.OrdinalIgnoreCase);
+                // Filtering: Process First Year and Second Year Commission (including Index Commission & Retention)
+                var isFirstYear = subType.Contains("First Year", StringComparison.OrdinalIgnoreCase);
+                var isSecondYear = subType.Contains("Second Year", StringComparison.OrdinalIgnoreCase);
 
                 if (!isFirstYear && !isSecondYear) 
                 {
-                    continue; // Skip all other types (Recurring, Service, etc.)
+                    continue; // Skip non-commission types
                 }
 
                 commCount++;
@@ -259,6 +295,20 @@ public class ReconciliationService : IReconciliationService
                 var premium = ParseDecimal(row.Cell(premCol).Value.ToString());
                 
                 var salesForceName = salesForceCol != -1 ? (string.IsNullOrWhiteSpace(row.Cell(salesForceCol).Value.ToString()) ? null : row.Cell(salesForceCol).Value.ToString().Trim()) : null;
+                var product = productCol != -1 ? (string.IsNullOrWhiteSpace(row.Cell(productCol).Value.ToString()) ? null : row.Cell(productCol).Value.ToString().Trim()) : null;
+                
+                DateTime? captureDate = null;
+                if (captureDateCol != -1)
+                {
+                    var cellStr = row.Cell(captureDateCol).Value.ToString();
+                    if (!string.IsNullOrWhiteSpace(cellStr) && DateTime.TryParse(cellStr, out var parsedDt))
+                    {
+                        captureDate = DateTime.SpecifyKind(parsedDt, DateTimeKind.Utc);
+                    }
+                }
+
+                var grossCommission = commGrossCol != -1 ? ParseDecimal(row.Cell(commGrossCol).Value.ToString()) : amount;
+                var commissionRetention = commRetCol != -1 ? ParseDecimal(row.Cell(commRetCol).Value.ToString()) : 0;
                 var clawBack = clawbackCol != -1 ? ParseDecimal(row.Cell(clawbackCol).Value.ToString()) : 0;
                 var clawBackRetention = clawbackRetentionCol != -1 ? ParseDecimal(row.Cell(clawbackRetentionCol).Value.ToString()) : 0;
                 var clawBackReason = clawbackReasonCol != -1 ? (string.IsNullOrWhiteSpace(row.Cell(clawbackReasonCol).Value.ToString()) ? null : row.Cell(clawbackReasonCol).Value.ToString().Trim()) : null;
@@ -276,13 +326,19 @@ public class ReconciliationService : IReconciliationService
                     Premium = premium,
                     Category = category,
                     SalesForceName = salesForceName,
+                    Product = product,
+                    CaptureDate = captureDate,
+                    GrossCommission = grossCommission,
+                    CommissionRetention = commissionRetention,
                     ClawBack = clawBack,
                     ClawBackRetention = clawBackRetention,
+                    NettCommission = amount,
                     ClawBackReason = clawBackReason
                 };
 
                 // MATCHING & AUTO-REGISTRATION
-                var masterMatch = masterPolicies.FirstOrDefault(p => p.PolicyNumber.Equals(policyNumber, StringComparison.OrdinalIgnoreCase));
+                var pKey = policyNumber.Trim();
+                masterPolicyMap.TryGetValue(pKey, out var masterMatch);
                 if (masterMatch != null)
                 {
                     item.IsConfirmed = masterMatch.IsConfirmed;
@@ -293,7 +349,7 @@ public class ReconciliationService : IReconciliationService
                     masterMatch.LastCommissionAmount = amount;
                     masterMatch.LastUpdated = DateTime.UtcNow;
                     
-                    var subMatch = allSubmissions.FirstOrDefault(s => s.PolicyNumber.Equals(policyNumber, StringComparison.OrdinalIgnoreCase));
+                    subPolicyMap.TryGetValue(pKey, out var subMatch);
                     if (subMatch != null)
                     {
                         item.MatchedSubmissionId = subMatch.Id;
@@ -310,11 +366,16 @@ public class ReconciliationService : IReconciliationService
                         subMatch.Status = SubmissionStatus.Lapsed;
                         masterMatch.Status = SubmissionStatus.Lapsed;
                     }
+                    else if (amount > 0 && item.IsConfirmed)
+                    {
+                        if (subMatch != null) subMatch.Status = SubmissionStatus.Active;
+                        masterMatch.Status = SubmissionStatus.Active;
+                    }
                     statement.MatchedRows++;
                 }
                 else
                 {
-                    var subMatch = FindMatch(policyNumber, clientName, salesForceName, allSubmissions, allAdvisors, out bool isPolicyMatch);
+                    var subMatch = FindMatch(policyNumber, clientName, salesForceName, allSubmissions, allAdvisors, out bool isPolicyMatch, premium, null, subPolicyMap, subSurnameMap);
                     if (subMatch != null)
                     {
                         // Fallback for premium if statement is missing it
@@ -369,6 +430,121 @@ public class ReconciliationService : IReconciliationService
                 statement.TotalRows++;
             }
             _logger.LogInformation("Processed {Count} relevant rows from Commission Details sheet.", commCount);
+        }
+
+        // Fallback: If no "Commission Details" items were loaded, but "Movement" items were loaded (e.g. Weekly Statement files),
+        // populate statement.Items from statement.MovementItems so payslips & payouts generate properly.
+        if (statement.Items.Count == 0 && statement.MovementItems.Count > 0)
+        {
+            _logger.LogInformation("No 'Commission Details' sheet items found. Fallback: Populating statement items from {Count} Movement items...", statement.MovementItems.Count);
+            foreach (var m in statement.MovementItems)
+            {
+                var item = new StatementItem
+                {
+                    ClientName = m.ClientName,
+                    PolicyNumber = m.PolicyNumber,
+                    CommissionType = m.MovementType,
+                    CommissionSubType = m.MovementType,
+                    Amount = m.Amount,
+                    Premium = m.Premium,
+                    Category = m.Category,
+                    AdvisorName = m.AdvisorName,
+                    IsConfirmed = m.IsConfirmed,
+                    MatchedSubmissionId = m.MatchedSubmissionId,
+                    MatchedSubmission = m.MatchedSubmission,
+                    FileUrl = m.FileUrl,
+                    GoogleDriveLink = m.GoogleDriveLink,
+                    GrossCommission = m.Amount,
+                    NettCommission = m.Amount
+                };
+
+                statement.Items.Add(item);
+                statement.TotalCommission += item.Amount;
+                statement.TotalRows++;
+            }
+        }
+
+        // 3. Process "Commission Not Payable" Sheet (Non-blocking extension)
+        try
+        {
+            var unpayableSheetNames = new[] { "Commission Not Payable", "Commissions Not Payable", "Not Payable", "Unpayable" };
+            if (TryFindWorksheet(workbook, unpayableSheetNames, out var unpayableSheet))
+            {
+                _logger.LogInformation("Processing 'Commission Not Payable' worksheet '{SheetName}'...", unpayableSheet.Name);
+                var headerRow = unpayableSheet.Row(1);
+
+                int policyCol = 1, clientCol = 5, reasonCol = 13, statusCol = 11, premCol = 10, premBalCol = 9;
+                int policyIdCol = 2, mobileCol = 6, paymethodCol = 12, capturedCol = 7, inceptionCol = 8;
+
+                for (int c = 1; c <= headerRow.LastCellUsed().Address.ColumnNumber; c++)
+                {
+                    var val = headerRow.Cell(c).Value.ToString().Replace(" ", "").Replace("(", "").Replace(")", "").ToLower();
+                    if (val.Contains("policynumber")) policyCol = c;
+                    else if (val.Contains("policyid")) policyIdCol = c;
+                    else if (val.Contains("clientname")) clientCol = c;
+                    else if (val.Contains("clientmobile") || val.Contains("mobile")) mobileCol = c;
+                    else if (val.Contains("reason")) reasonCol = c;
+                    else if (val.Contains("policystatus") || val.Contains("status")) statusCol = c;
+                    else if (val.Contains("paymethod")) paymethodCol = c;
+                    else if (val.Contains("premiumbalance") || val.Contains("balance")) premBalCol = c;
+                    else if (val.Contains("premium") && !val.Contains("balance")) premCol = c;
+                    else if (val.Contains("captured")) capturedCol = c;
+                    else if (val.Contains("inception")) inceptionCol = c;
+                }
+
+                var rows = unpayableSheet.RowsUsed().Skip(1);
+                int unpayableCount = 0;
+                foreach (var row in rows)
+                {
+                    var policyNumber = row.Cell(policyCol).Value.ToString().Trim();
+                    var clientName = row.Cell(clientCol).Value.ToString().Trim();
+
+                    if (string.IsNullOrEmpty(policyNumber) && string.IsNullOrEmpty(clientName)) continue;
+
+                    unpayableCount++;
+                    var reason = reasonCol != -1 ? row.Cell(reasonCol).Value.ToString().Trim() : "Commission Not Payable";
+                    var policyId = policyIdCol != -1 ? row.Cell(policyIdCol).Value.ToString().Trim() : null;
+                    var mobile = mobileCol != -1 ? row.Cell(mobileCol).Value.ToString().Trim() : null;
+                    var status = statusCol != -1 ? row.Cell(statusCol).Value.ToString().Trim() : null;
+                    var paymethod = paymethodCol != -1 ? row.Cell(paymethodCol).Value.ToString().Trim() : null;
+                    var premium = premCol != -1 ? ParseDecimal(row.Cell(premCol).Value.ToString()) : 0m;
+                    var premiumBal = premBalCol != -1 ? ParseDecimal(row.Cell(premBalCol).Value.ToString()) : 0m;
+
+                    DateTime? capturedDate = capturedCol != -1 && row.Cell(capturedCol).Value.IsDateTime ? row.Cell(capturedCol).Value.GetDateTime().ToUniversalTime() : null;
+                    DateTime? inceptionDate = inceptionCol != -1 && row.Cell(inceptionCol).Value.IsDateTime ? row.Cell(inceptionCol).Value.GetDateTime().ToUniversalTime() : null;
+
+                    var unpayableItem = new UnpayablePolicyItem
+                    {
+                        PolicyNumber = policyNumber,
+                        PolicyId = policyId,
+                        ClientName = clientName,
+                        ClientMobile = mobile,
+                        Premium = premium,
+                        PremiumBalance = premiumBal,
+                        Reason = string.IsNullOrEmpty(reason) ? "Commission Not Payable" : reason,
+                        PolicyStatus = status,
+                        Paymethod = paymethod,
+                        CapturedDate = capturedDate,
+                        InceptionDate = inceptionDate
+                    };
+
+                    // Match against submissions if possible
+                    var subMatch = FindMatch(policyNumber, clientName, null, allSubmissions, allAdvisors, out _, premiumBal);
+                    if (subMatch != null)
+                    {
+                        unpayableItem.MatchedSubmissionId = subMatch.Id;
+                        unpayableItem.MatchedSubmission = subMatch;
+                        unpayableItem.AdvisorName = string.Join(", ", subMatch.Advisors.Select(a => a.Name));
+                    }
+
+                    statement.UnpayableItems.Add(unpayableItem);
+                }
+                _logger.LogInformation("Processed {Count} rows from Commission Not Payable sheet.", unpayableCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to process Commission Not Payable sheet (non-blocking).");
         }
 
         // Generate the Excel Report
@@ -508,93 +684,230 @@ public class ReconciliationService : IReconciliationService
         return decimal.TryParse(cleanValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var result) ? result : 0;
     }
 
-    private Submission? FindMatch(string policyNumber, string clientName, string? salesForceName, List<Submission> submissions, List<Advisor> advisors, out bool isPolicyMatch)
+    private Submission? FindMatch(
+        string policyNumber, 
+        string clientName, 
+        string? salesForceName, 
+        List<Submission> submissions, 
+        List<Advisor> advisors, 
+        out bool isPolicyMatch,
+        decimal premium = 0,
+        string? idNumber = null,
+        Dictionary<string, Submission>? subPolicyMap = null,
+        Dictionary<string, List<Submission>>? subSurnameMap = null)
     {
         isPolicyMatch = false;
+
+        // 1. Exact Policy Number Match (O(1) Dictionary lookup or fallback)
         if (!string.IsNullOrEmpty(policyNumber))
         {
-            var match = submissions.FirstOrDefault(s => 
-                !string.IsNullOrEmpty(s.PolicyNumber) && 
-                s.PolicyNumber.Equals(policyNumber, StringComparison.OrdinalIgnoreCase));
-            
-            if (match != null)
+            var pKey = policyNumber.Trim();
+            if (subPolicyMap != null && subPolicyMap.TryGetValue(pKey, out var match))
             {
                 isPolicyMatch = true;
                 return match;
             }
-        }
-
-        if (!string.IsNullOrEmpty(clientName))
-        {
-            var parts = clientName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length > 0)
+            else
             {
-                var surnameFromExcel = parts[0];
-                var initialsFromExcel = parts.Length > 1 ? parts[1].Trim() : "";
-
-                // Find advisor by SalesforceName if provided
-                Advisor? matchingAdvisor = null;
-                if (!string.IsNullOrEmpty(salesForceName))
+                var matchFallback = submissions.FirstOrDefault(s => 
+                    !string.IsNullOrEmpty(s.PolicyNumber) && 
+                    s.PolicyNumber.Equals(policyNumber, StringComparison.OrdinalIgnoreCase));
+                if (matchFallback != null)
                 {
-                    matchingAdvisor = advisors.FirstOrDefault(a => 
-                        (!string.IsNullOrEmpty(a.SalesforceName) && a.SalesforceName.Equals(salesForceName, StringComparison.OrdinalIgnoreCase)) ||
-                        (!string.IsNullOrEmpty(a.Name) && a.Name.Equals(salesForceName, StringComparison.OrdinalIgnoreCase))
-                    );
+                    isPolicyMatch = true;
+                    return matchFallback;
                 }
-
-                // If advisor matches and we have a submission for that client belonging to that advisor, prioritize it!
-                if (matchingAdvisor != null)
-                {
-                    var strongMatch = submissions.FirstOrDefault(s =>
-                    {
-                        if (!s.ApplicantSurname.Equals(surnameFromExcel, StringComparison.OrdinalIgnoreCase))
-                            return false;
-
-                        if (s.Initials.Equals(initialsFromExcel, StringComparison.OrdinalIgnoreCase))
-                        {
-                            return s.Advisors.Any(a => a.Id == matchingAdvisor.Id);
-                        }
-
-                        if (s.Initials.Length >= 2 && initialsFromExcel.Length >= 2)
-                        {
-                            var sInit = s.Initials.ToUpper();
-                            var eInit = initialsFromExcel.ToUpper();
-                            var swappedEInit = new string(new[] { eInit[1], eInit[0] }) + (eInit.Length > 2 ? eInit.Substring(2) : "");
-                            if (sInit.Equals(swappedEInit))
-                            {
-                                return s.Advisors.Any(a => a.Id == matchingAdvisor.Id);
-                            }
-                        }
-
-                        return false;
-                    });
-
-                    if (strongMatch != null) return strongMatch;
-                }
-
-                var match = submissions.FirstOrDefault(s =>
-                {
-                    if (!s.ApplicantSurname.Equals(surnameFromExcel, StringComparison.OrdinalIgnoreCase))
-                        return false;
-
-                    if (s.Initials.Equals(initialsFromExcel, StringComparison.OrdinalIgnoreCase))
-                        return true;
-
-                    if (s.Initials.Length >= 2 && initialsFromExcel.Length >= 2)
-                    {
-                        var sInit = s.Initials.ToUpper();
-                        var eInit = initialsFromExcel.ToUpper();
-                        var swappedEInit = new string(new[] { eInit[1], eInit[0] }) + (eInit.Length > 2 ? eInit.Substring(2) : "");
-                        if (sInit.Equals(swappedEInit)) return true;
-                    }
-
-                    return false;
-                });
-
-                if (match != null) return match;
             }
         }
 
-        return null;
+        if (string.IsNullOrWhiteSpace(clientName) && string.IsNullOrWhiteSpace(idNumber))
+            return null;
+
+        // 2. Identify potential Salesforce / Advisor match if provided
+        Advisor? matchingAdvisor = null;
+        if (!string.IsNullOrEmpty(salesForceName))
+        {
+            matchingAdvisor = advisors.FirstOrDefault(a => 
+                (!string.IsNullOrEmpty(a.SalesforceName) && a.SalesforceName.Equals(salesForceName, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(a.Name) && a.Name.Equals(salesForceName, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+
+        // Smart Client Name Parsing
+        var (surnameFromExcel, initialsFromExcel, fullFirstFromExcel) = ParseClientName(clientName);
+
+        // Filter candidate submissions using Surname Map if available to avoid full 69,000-item iteration
+        IEnumerable<Submission> candidatesPool = submissions;
+        if (subSurnameMap != null && !string.IsNullOrWhiteSpace(surnameFromExcel) && subSurnameMap.TryGetValue(surnameFromExcel.Trim(), out var matchedCandidates))
+        {
+            candidatesPool = matchedCandidates;
+        }
+
+        // Candidates evaluation using Weighted Scoring
+        var candidates = new List<(Submission submission, double score)>();
+
+        foreach (var sub in candidatesPool)
+        {
+            double score = 0;
+
+            // --- ID Number Check ---
+            if (!string.IsNullOrEmpty(idNumber) && !string.IsNullOrEmpty(sub.IdNumber))
+            {
+                if (sub.IdNumber.Trim().Equals(idNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 100; // Strong ID match
+                }
+            }
+
+            // --- Surname Matching ---
+            bool surnameMatched = false;
+            if (!string.IsNullOrEmpty(surnameFromExcel) && !string.IsNullOrEmpty(sub.ApplicantSurname))
+            {
+                var subSurname = sub.ApplicantSurname.Trim();
+                if (subSurname.Equals(surnameFromExcel, StringComparison.OrdinalIgnoreCase))
+                {
+                    surnameMatched = true;
+                    score += 40;
+                }
+                else if (subSurname.Contains(surnameFromExcel, StringComparison.OrdinalIgnoreCase) ||
+                         surnameFromExcel.Contains(subSurname, StringComparison.OrdinalIgnoreCase))
+                {
+                    surnameMatched = true;
+                    score += 25; // Partial/Compound surname match (e.g., Mthimkhulu-Dlamini)
+                }
+            }
+
+            // If surname didn't match at all and ID didn't match, this submission is not a candidate
+            if (!surnameMatched && score < 50)
+                continue;
+
+            // --- Initials / First Name Matching ---
+            if (!string.IsNullOrEmpty(sub.Initials))
+            {
+                var cleanSubInit = CleanInitials(sub.Initials);
+                var cleanExcelInit = CleanInitials(initialsFromExcel);
+
+                if (!string.IsNullOrEmpty(cleanExcelInit) && cleanSubInit.Equals(cleanExcelInit, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 30; // Exact initials match
+                }
+                else if (cleanSubInit.Length >= 2 && cleanExcelInit.Length >= 2 && SwappedInitialsMatch(cleanSubInit, cleanExcelInit))
+                {
+                    score += 25; // Swapped initials (e.g. MJ vs JM)
+                }
+                else if (!string.IsNullOrEmpty(fullFirstFromExcel) && fullFirstFromExcel.StartsWith(cleanSubInit, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 20; // Full name starts with initial
+                }
+                else if (!string.IsNullOrEmpty(cleanSubInit) && !string.IsNullOrEmpty(cleanExcelInit) &&
+                         cleanSubInit.Substring(0, 1).Equals(cleanExcelInit.Substring(0, 1), StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 15; // First initial letter matches
+                }
+            }
+
+            // --- Advisor Alignment ---
+            if (matchingAdvisor != null)
+            {
+                if (sub.Advisors.Any(a => a.Id == matchingAdvisor.Id))
+                {
+                    score += 35; // Matches the advisor specified in the statement
+                }
+            }
+
+            // --- Premium Alignment ---
+            if (premium > 0 && sub.Premium > 0)
+            {
+                var diff = Math.Abs(sub.Premium - premium);
+                if (diff < 0.01m)
+                {
+                    score += 25; // Exact premium match
+                }
+                else if (diff <= 5.00m)
+                {
+                    score += 10; // Close premium match
+                }
+            }
+
+            if (score >= 40)
+            {
+                candidates.Add((sub, score));
+            }
+        }
+
+        if (!candidates.Any())
+            return null;
+
+        // Pick candidate with the highest score
+        var bestMatch = candidates.OrderByDescending(c => c.score).ThenByDescending(c => c.submission.CreatedAt).FirstOrDefault();
+        
+        return bestMatch.submission;
+    }
+
+    private (string surname, string initials, string fullFirst) ParseClientName(string clientName)
+    {
+        if (string.IsNullOrWhiteSpace(clientName)) return ("", "", "");
+
+        var clean = clientName.Trim();
+        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 1)
+        {
+            return (parts[0], "", "");
+        }
+
+        // Check for common compound surname prefixes
+        var prefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "van", "de", "der", "von", "du", "le", "la" };
+        
+        if (parts.Length >= 3 && prefixes.Contains(parts[0]))
+        {
+            var compoundSurname = $"{parts[0]} {parts[1]}";
+            var init = parts[2];
+            var full = parts.Length > 2 ? string.Join(" ", parts.Skip(2)) : "";
+            return (compoundSurname, init, full);
+        }
+
+        var surname = parts[0];
+        var initials = parts[1];
+        var fullFirst = string.Join(" ", parts.Skip(1));
+
+        return (surname, initials, fullFirst);
+    }
+
+    private string CleanInitials(string initials)
+    {
+        if (string.IsNullOrWhiteSpace(initials)) return "";
+        return System.Text.RegularExpressions.Regex.Replace(initials, @"[\.\s\-_]", "").ToUpper();
+    }
+
+    private bool SwappedInitialsMatch(string init1, string init2)
+    {
+        if (init1.Length < 2 || init2.Length < 2) return false;
+        var swapped = new string(new[] { init2[1], init2[0] }) + (init2.Length > 2 ? init2.Substring(2) : "");
+        return init1.Equals(swapped, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryFindWorksheet(XLWorkbook workbook, string[] candidateNames, out IXLWorksheet sheet)
+    {
+        sheet = null!;
+        foreach (var name in candidateNames)
+        {
+            if (workbook.Worksheets.TryGetWorksheet(name, out sheet))
+                return true;
+        }
+        foreach (var ws in workbook.Worksheets)
+        {
+            var wsName = ws.Name.Trim().ToLower();
+            foreach (var candidate in candidateNames)
+            {
+                var candClean = candidate.Trim().ToLower();
+                if (wsName.Equals(candClean) || wsName.Contains(candClean) || candClean.Contains(wsName))
+                {
+                    sheet = ws;
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

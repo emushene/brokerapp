@@ -384,7 +384,11 @@ public class FinancialsService : IFinancialsService
             {
                 var rate = isSecondYear ? advisor.CommissionPercentage2ndYear : advisor.CommissionPercentage1stYear;
                 var percentage = rate / 100m;
-                var commissionPerAdvisor = Math.Round((item.Amount * percentage) / advisorsToPay.Count, 2);
+                var grossPerAdvisor = Math.Round(((item.GrossCommission ?? item.Amount) * percentage) / advisorsToPay.Count, 2);
+                var commRetPerAdvisor = Math.Round(((item.CommissionRetention ?? 0) * percentage) / advisorsToPay.Count, 2);
+                var clawbackGrossPerAdvisor = Math.Round(((item.ClawBack ?? 0) * percentage) / advisorsToPay.Count, 2);
+                var clawbackRetPerAdvisor = Math.Round(((item.ClawBackRetention ?? 0) * percentage) / advisorsToPay.Count, 2);
+                var nettPerAdvisor = Math.Round((item.Amount * percentage) / advisorsToPay.Count, 2);
 
                 var payoutRef = $"{item.Category} - {item.PolicyNumber}";
                 if (item.Category == "Lapse" && !string.IsNullOrEmpty(item.ClawBackReason))
@@ -397,7 +401,16 @@ public class FinancialsService : IFinancialsService
                     SubmissionId = sub.Id,
                     AdvisorId = advisor.Id,
                     CommissionStatementId = item.CommissionStatementId,
-                    CommissionAmount = commissionPerAdvisor,
+                    CommissionAmount = nettPerAdvisor,
+                    GrossCommission = grossPerAdvisor,
+                    CommissionRetention = commRetPerAdvisor,
+                    ClawBackGross = clawbackGrossPerAdvisor,
+                    ClawBackRetention = clawbackRetPerAdvisor,
+                    NettCommission = nettPerAdvisor,
+                    Product = item.Product,
+                    CaptureDate = item.CaptureDate,
+                    ClawBackReason = item.ClawBackReason,
+                    SplitPercentage = rate,
                     DateCalculated = DateTime.UtcNow,
                     PayoutReference = payoutRef,
                     IsPaid = false
@@ -544,7 +557,11 @@ public class FinancialsService : IFinancialsService
             {
                 var rate = isSecondYear ? advisor.CommissionPercentage2ndYear : advisor.CommissionPercentage1stYear;
                 var percentage = rate / 100m;
-                var commissionPerAdvisor = Math.Round((item.Amount * percentage) / advisorsToPay.Count, 2);
+                var grossPerAdvisor = Math.Round(((item.GrossCommission ?? item.Amount) * percentage) / advisorsToPay.Count, 2);
+                var commRetPerAdvisor = Math.Round(((item.CommissionRetention ?? 0) * percentage) / advisorsToPay.Count, 2);
+                var clawbackGrossPerAdvisor = Math.Round(((item.ClawBack ?? 0) * percentage) / advisorsToPay.Count, 2);
+                var clawbackRetPerAdvisor = Math.Round(((item.ClawBackRetention ?? 0) * percentage) / advisorsToPay.Count, 2);
+                var nettPerAdvisor = Math.Round((item.Amount * percentage) / advisorsToPay.Count, 2);
 
                 var payoutRef = $"{item.Category} - {item.PolicyNumber} (Direct)";
                 if (item.Category == "Lapse" && !string.IsNullOrEmpty(item.ClawBackReason))
@@ -557,7 +574,16 @@ public class FinancialsService : IFinancialsService
                     SubmissionId = null,
                     AdvisorId = advisor.Id,
                     CommissionStatementId = item.CommissionStatementId,
-                    CommissionAmount = commissionPerAdvisor,
+                    CommissionAmount = nettPerAdvisor,
+                    GrossCommission = grossPerAdvisor,
+                    CommissionRetention = commRetPerAdvisor,
+                    ClawBackGross = clawbackGrossPerAdvisor,
+                    ClawBackRetention = clawbackRetPerAdvisor,
+                    NettCommission = nettPerAdvisor,
+                    Product = item.Product,
+                    CaptureDate = item.CaptureDate,
+                    ClawBackReason = item.ClawBackReason,
+                    SplitPercentage = rate,
                     DateCalculated = DateTime.UtcNow,
                     PayoutReference = payoutRef,
                     IsPaid = false
@@ -626,7 +652,11 @@ public class FinancialsService : IFinancialsService
                 {
                     var rate = isSecondYear ? advisor.CommissionPercentage2ndYear : advisor.CommissionPercentage1stYear;
                     var percentage = rate / 100m;
-                    var commissionPerAdvisor = Math.Round((relatedStatementItem.Amount * percentage) / advisorsInvolved.Count, 2);
+                    var grossPerAdvisor = Math.Round(((relatedStatementItem.GrossCommission ?? relatedStatementItem.Amount) * percentage) / advisorsInvolved.Count, 2);
+                    var commRetPerAdvisor = Math.Round(((relatedStatementItem.CommissionRetention ?? 0) * percentage) / advisorsInvolved.Count, 2);
+                    var clawbackGrossPerAdvisor = Math.Round(((relatedStatementItem.ClawBack ?? 0) * percentage) / advisorsInvolved.Count, 2);
+                    var clawbackRetPerAdvisor = Math.Round(((relatedStatementItem.ClawBackRetention ?? 0) * percentage) / advisorsInvolved.Count, 2);
+                    var nettPerAdvisor = Math.Round((relatedStatementItem.Amount * percentage) / advisorsInvolved.Count, 2);
 
                     var payoutRef = $"{relatedStatementItem.Category} - {relatedStatementItem.PolicyNumber} (Direct)";
                     if (relatedStatementItem.Category == "Lapse" && !string.IsNullOrEmpty(relatedStatementItem.ClawBackReason))
@@ -639,7 +669,16 @@ public class FinancialsService : IFinancialsService
                         SubmissionId = null,
                         AdvisorId = advisor.Id,
                         CommissionStatementId = relatedStatementItem.CommissionStatementId,
-                        CommissionAmount = commissionPerAdvisor,
+                        CommissionAmount = nettPerAdvisor,
+                        GrossCommission = grossPerAdvisor,
+                        CommissionRetention = commRetPerAdvisor,
+                        ClawBackGross = clawbackGrossPerAdvisor,
+                        ClawBackRetention = clawbackRetPerAdvisor,
+                        NettCommission = nettPerAdvisor,
+                        Product = relatedStatementItem.Product,
+                        CaptureDate = relatedStatementItem.CaptureDate,
+                        ClawBackReason = relatedStatementItem.ClawBackReason,
+                        SplitPercentage = rate,
                         DateCalculated = DateTime.UtcNow,
                         PayoutReference = payoutRef,
                         IsPaid = false

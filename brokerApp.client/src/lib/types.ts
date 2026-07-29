@@ -111,6 +111,15 @@ export interface Commission {
   applicantSurname: string;
   applicantInitials: string;
   commissionAmount: number;
+  grossCommission?: number;
+  commissionRetention?: number;
+  clawBackGross?: number;
+  clawBackRetention?: number;
+  nettCommission?: number;
+  splitPercentage?: number;
+  product?: string;
+  policyNumber?: string;
+  premium?: number;
   dateCalculated: string;
   isPaid: boolean;
   datePaid?: string;
@@ -157,6 +166,25 @@ export interface MovementItem {
   isConfirmed: boolean;
 }
 
+export interface UnpayablePolicyItem {
+  id: number;
+  policyNumber: string;
+  policyId?: string;
+  clientName: string;
+  clientMobile?: string;
+  premium: number;
+  premiumBalance: number;
+  reason: string;
+  policyStatus?: string;
+  paymethod?: string;
+  capturedDate?: string;
+  inceptionDate?: string;
+  matchedSubmissionId?: number;
+  matchedSubmission?: Submission;
+  advisorName?: string;
+  isMatched: boolean;
+}
+
 export interface CommissionStatement {
   id: number;
   fileName: string;
@@ -171,6 +199,7 @@ export interface CommissionStatement {
   emailSentDate?: string;
   items: StatementItem[];
   movementItems: MovementItem[];
+  unpayableItems?: UnpayablePolicyItem[];
 }
 
 export interface WeeklyStats {

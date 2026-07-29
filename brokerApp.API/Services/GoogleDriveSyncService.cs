@@ -15,6 +15,7 @@ public interface IGoogleDriveSyncService
 
 public class GoogleDriveSyncService : IGoogleDriveSyncService
 {
+    private static readonly SemaphoreSlim _syncLock = new SemaphoreSlim(1, 1);
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
     private readonly ILogger<GoogleDriveSyncService> _logger;
@@ -31,39 +32,60 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
 
     public async Task SyncAllAsync()
     {
-        using var scope = _serviceProvider.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-        var keyFilePath = _configuration["GoogleDrive:KeyFilePath"] ?? "joska-fin-key.json";
-        var rootFolderIds = _configuration.GetSection("GoogleDrive:RootFolderIds").Get<string[]>();
-
-        if (rootFolderIds == null || rootFolderIds.Length == 0)
+        if (!await _syncLock.WaitAsync(0))
         {
-            _logger.LogWarning("GoogleDrive:RootFolderIds is not configured or empty. Skipping sync.");
+            _logger.LogInformation("Google Drive synchronization is already in progress. Skipping concurrent run.");
             return;
         }
 
         try
         {
+            using var scope = _serviceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var keyFilePath = _configuration["GoogleDrive:KeyFilePath"] ?? "joska-fin-key.json";
+            var rootFolderIds = _configuration.GetSection("GoogleDrive:RootFolderIds").Get<string[]>();
+
+            if (rootFolderIds == null || rootFolderIds.Length == 0)
+            {
+                _logger.LogWarning("GoogleDrive:RootFolderIds is not configured or empty. Skipping sync.");
+                return;
+            }
+
             _logger.LogInformation("Starting Google Drive synchronization for {Count} root folders...", rootFolderIds.Length);
             
             GoogleCredential credential;
             var serviceAccountJson = _configuration["GoogleDrive:ServiceAccountJson"];
             
-            if (!string.IsNullOrEmpty(serviceAccountJson))
+            try
             {
-                _logger.LogInformation("Google Drive Sync: Loading credentials from Secret Manager (JSON)");
-                credential = GoogleCredential.FromJson(serviceAccountJson)
-                    .CreateScoped(DriveService.Scope.DriveMetadataReadonly);
-            }
-            else
-            {
-                _logger.LogInformation("Google Drive Sync: Loading credentials from {Path}", keyFilePath);
-                using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
+                if (!string.IsNullOrEmpty(serviceAccountJson))
                 {
-                    credential = GoogleCredential.FromStream(stream)
+                    _logger.LogInformation("Google Drive Sync: Loading credentials from Secret Manager (JSON)");
+                    credential = GoogleCredential.FromJson(serviceAccountJson)
                         .CreateScoped(DriveService.Scope.DriveMetadataReadonly);
                 }
+                else if (File.Exists(keyFilePath))
+                {
+                    _logger.LogInformation("Google Drive Sync: Loading credentials from {Path}", keyFilePath);
+                    using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
+                    {
+                        credential = GoogleCredential.FromStream(stream)
+                            .CreateScoped(DriveService.Scope.DriveMetadataReadonly);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Google Drive Sync: Key file not found at {Path}, using Application Default Credentials", keyFilePath);
+                    credential = (await GoogleCredential.GetApplicationDefaultAsync())
+                        .CreateScoped(DriveService.Scope.DriveMetadataReadonly);
+                }
+            }
+            catch (Exception credEx)
+            {
+                _logger.LogWarning(credEx, "Failed to load Google Drive credentials from key file/Secret Manager. Falling back to Application Default Credentials.");
+                credential = (await GoogleCredential.GetApplicationDefaultAsync())
+                    .CreateScoped(DriveService.Scope.DriveMetadataReadonly);
             }
 
             var service = new DriveService(new BaseClientService.Initializer()
@@ -127,6 +149,10 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
         {
             _logger.LogError(ex, "Error during Google Drive synchronization");
         }
+        finally
+        {
+            _syncLock.Release();
+        }
     }
 
     private async Task SyncAdvisorFolderAsync(
@@ -189,6 +215,24 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
             allAdvisors.Add(advisor);
         }
 
+        var fileIds = files.Select(f => f.Id).ToList();
+        var existingKeys = new HashSet<string>();
+
+        // Query existing keys in chunks of 1000 to avoid SQL parameter limits
+        for (int i = 0; i < fileIds.Count; i += 1000)
+        {
+            var chunk = fileIds.Skip(i).Take(1000).ToList();
+            var keysInDb = await dbContext.SubmissionDocuments
+                .Where(d => chunk.Contains(d.StorageKey))
+                .Select(d => d.StorageKey)
+                .ToListAsync();
+            foreach (var key in keysInDb)
+            {
+                existingKeys.Add(key);
+            }
+        }
+
+        int newItemsCount = 0;
         foreach (var file in files)
         {
             var (idNum, surname, initial) = ParseFileName(file.Name);
@@ -199,9 +243,7 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
                 continue;
             }
 
-            var alreadyImported = await dbContext.SubmissionDocuments.AnyAsync(d => d.StorageKey == file.Id);
-
-            if (!alreadyImported)
+            if (!existingKeys.Contains(file.Id))
             {
                 _logger.LogInformation("Creating new submission for file: {FileName} ({IdNum} {Surname}) under {Advisor}", file.Name, idNum, surname, advisor.Name);
                 var newSubmission = new Submission
@@ -225,9 +267,21 @@ public class GoogleDriveSyncService : IGoogleDriveSyncService
                 });
 
                 dbContext.Submissions.Add(newSubmission);
+                existingKeys.Add(file.Id);
+                newItemsCount++;
+
+                // Batch SaveChanges every 500 items to prevent huge EF memory overhead
+                if (newItemsCount % 500 == 0)
+                {
+                    await dbContext.SaveChangesAsync();
+                }
             }
         }
-        await dbContext.SaveChangesAsync();
+
+        if (dbContext.ChangeTracker.HasChanges())
+        {
+            await dbContext.SaveChangesAsync();
+        }
     }
 
     private (string idNum, string surname, string initial) ParseFileName(string fileName)

@@ -1,48 +1,51 @@
 using System;
 using System.IO;
-using ClosedXML.Excel;
+using System.Threading.Tasks;
+using Google.Apis.Auth.OAuth2;
+using Google.Apis.Drive.v3;
+using Google.Apis.Services;
 
 class Program
 {
-    static void Main(string[] args)
+    static async Task Main(string[] args)
     {
-        var filePath = "../Jospet.xlsx";
-        if (!File.Exists(filePath))
-        {
-            Console.WriteLine($"File not found: {Path.GetFullPath(filePath)}");
-            return;
-        }
+        var keyFilePath = Path.Combine(Directory.GetCurrentDirectory(), "brokerApp.API", "broker-app-key.json");
+        var rootFolderId = "1-0SxxYnKTE7KvHyGIqKqkT6Lu1E_ejhY";
 
         try
         {
-            using var workbook = new XLWorkbook(filePath);
-            Console.WriteLine($"Workbook loaded successfully: {filePath}");
-            Console.WriteLine($"Number of worksheets: {workbook.Worksheets.Count}");
-
-            foreach (var ws in workbook.Worksheets)
+            Console.WriteLine($"Loading credentials from {keyFilePath}...");
+            GoogleCredential credential;
+            using (var stream = new FileStream(keyFilePath, FileMode.Open, FileAccess.Read))
             {
-                Console.WriteLine($"----------------------------------------");
-                Console.WriteLine($"Worksheet Name: '{ws.Name}'");
-                var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
-                var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
-                Console.WriteLine($"Used range: Rows 1 to {lastRow}, Cols 1 to {lastCol}");
-
-                // Read first 5 rows
-                for (int r = 1; r <= Math.Min(10, lastRow); r++)
-                {
-                    var row = ws.Row(r);
-                    var cells = new System.Collections.Generic.List<string>();
-                    for (int c = 1; c <= lastCol; c++)
-                    {
-                        cells.Add(row.Cell(c).Value.ToString());
-                    }
-                    Console.WriteLine($"Row {r}: {string.Join(" | ", cells)}");
-                }
+                credential = GoogleCredential.FromStream(stream)
+                    .CreateScoped(DriveService.Scope.DriveFile, DriveService.Scope.DriveMetadataReadonly);
             }
+
+            var service = new DriveService(new BaseClientService.Initializer()
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "BrokerAppTest",
+            });
+
+            Console.WriteLine($"Service account client email: {((ServiceAccountCredential)credential.UnderlyingCredential).Id}");
+
+            Console.WriteLine($"Checking access to folder: {rootFolderId}...");
+            var request = service.Files.Get(rootFolderId);
+            request.Fields = "id, name, mimeType";
+            var folder = await request.ExecuteAsync();
+
+            Console.WriteLine($"Successfully connected!");
+            Console.WriteLine($"Folder Name: {folder.Name}");
+            Console.WriteLine($"MimeType: {folder.MimeType}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ERROR: {ex.Message}");
+            Console.WriteLine($"\nError: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"Inner Error: {ex.InnerException.Message}");
+            }
         }
     }
 }

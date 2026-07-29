@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using brokerApp.API.Data;
@@ -11,9 +12,11 @@ using brokerApp.API.Data;
 namespace brokerApp.API.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260728075917_AddUnpayablePolicyItems")]
+    partial class AddUnpayablePolicyItems
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -177,22 +180,7 @@ namespace brokerApp.API.Migrations
                     b.Property<int>("AdvisorId")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime?>("CaptureDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal>("ClawBackGross")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("ClawBackReason")
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("ClawBackRetention")
-                        .HasColumnType("numeric");
-
                     b.Property<decimal>("CommissionAmount")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("CommissionRetention")
                         .HasColumnType("numeric");
 
                     b.Property<int?>("CommissionStatementId")
@@ -204,26 +192,14 @@ namespace brokerApp.API.Migrations
                     b.Property<DateTime?>("DatePaid")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<decimal>("GrossCommission")
-                        .HasColumnType("numeric");
-
                     b.Property<bool>("IsPaid")
                         .HasColumnType("boolean");
-
-                    b.Property<decimal>("NettCommission")
-                        .HasColumnType("numeric");
 
                     b.Property<string>("PayoutReference")
                         .HasColumnType("text");
 
                     b.Property<int?>("PolicyPaymentId")
                         .HasColumnType("integer");
-
-                    b.Property<string>("Product")
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("SplitPercentage")
-                        .HasColumnType("numeric");
 
                     b.Property<int?>("SubmissionId")
                         .HasColumnType("integer");
@@ -474,9 +450,6 @@ namespace brokerApp.API.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
 
-                    b.Property<DateTime?>("CaptureDate")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasColumnType("text");
@@ -493,9 +466,6 @@ namespace brokerApp.API.Migrations
                     b.Property<string>("ClientName")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<decimal?>("CommissionRetention")
-                        .HasColumnType("numeric");
 
                     b.Property<int>("CommissionStatementId")
                         .HasColumnType("integer");
@@ -514,17 +484,11 @@ namespace brokerApp.API.Migrations
                     b.Property<string>("GoogleDriveLink")
                         .HasColumnType("text");
 
-                    b.Property<decimal?>("GrossCommission")
-                        .HasColumnType("numeric");
-
                     b.Property<bool>("IsConfirmed")
                         .HasColumnType("boolean");
 
                     b.Property<int?>("MatchedSubmissionId")
                         .HasColumnType("integer");
-
-                    b.Property<decimal?>("NettCommission")
-                        .HasColumnType("numeric");
 
                     b.Property<string>("PolicyNumber")
                         .IsRequired()
@@ -532,9 +496,6 @@ namespace brokerApp.API.Migrations
 
                     b.Property<decimal>("Premium")
                         .HasColumnType("numeric");
-
-                    b.Property<string>("Product")
-                        .HasColumnType("text");
 
                     b.Property<string>("SalesForceName")
                         .HasColumnType("text");
@@ -652,9 +613,6 @@ namespace brokerApp.API.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("StorageKey")
-                        .IsUnique();
 
                     b.HasIndex("SubmissionId");
 

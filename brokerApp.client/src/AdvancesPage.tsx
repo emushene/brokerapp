@@ -30,6 +30,25 @@ const AdvancesPage: React.FC = () => {
     description: '',
   });
 
+  // Searchable Advisor Selection State
+  const [advisorSearch, setAdvisorSearch] = useState('');
+  const [isAdvisorDropdownOpen, setIsAdvisorDropdownOpen] = useState(false);
+
+  const filteredAdvisors = useMemo(() => {
+    if (!advisorSearch.trim()) return advisors;
+    const q = advisorSearch.toLowerCase();
+    return advisors.filter(a => 
+      a.name.toLowerCase().includes(q) || 
+      a.code.toLowerCase().includes(q) ||
+      (a.email && a.email.toLowerCase().includes(q))
+    );
+  }, [advisors, advisorSearch]);
+
+  const selectedAdvisor = useMemo(() => {
+    if (!formData.advisorId) return null;
+    return advisors.find(a => a.id.toString() === formData.advisorId) || null;
+  }, [advisors, formData.advisorId]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -278,7 +297,7 @@ const AdvancesPage: React.FC = () => {
         }
         @media print {
           @page {
-            margin: 1cm;
+            margin: 0;
             size: auto;
           }
           body {
@@ -287,6 +306,7 @@ const AdvancesPage: React.FC = () => {
             font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            margin: 0 !important;
           }
           body * {
             visibility: hidden;
@@ -298,8 +318,9 @@ const AdvancesPage: React.FC = () => {
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
-            padding: 0 !important;
+            padding: 1.2cm !important;
             margin: 0 !important;
+            box-sizing: border-box !important;
           }
           #print-zone * {
             visibility: visible !important;
@@ -595,19 +616,95 @@ const AdvancesPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Select Advisor</label>
-                <select
-                  required
-                  value={formData.advisorId}
-                  onChange={(e) => setFormData({ ...formData, advisorId: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none cursor-pointer"
+                
+                {/* Trigger Control */}
+                <div 
+                  onClick={() => setIsAdvisorDropdownOpen(!isAdvisorDropdownOpen)}
+                  className="w-full bg-slate-800 border border-slate-700 hover:border-slate-600 rounded-2xl px-5 py-3.5 text-white outline-none focus-within:ring-2 focus-within:ring-blue-500/50 transition-all cursor-pointer flex items-center justify-between shadow-sm"
                 >
-                  <option value="">Choose an advisor...</option>
-                  {advisors.map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
+                  {selectedAdvisor ? (
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-xs">
+                        {selectedAdvisor.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white leading-tight">{selectedAdvisor.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{selectedAdvisor.code}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 text-sm">Choose an advisor...</span>
+                  )}
+                  <Search className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {/* Dropdown Menu */}
+                {isAdvisorDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-2 z-[80] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                    <div className="p-3 border-b border-slate-800 bg-slate-800/60">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search advisor by name or code..."
+                          value={advisorSearch}
+                          onChange={(e) => setAdvisorSearch(e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-8 py-2.5 text-xs text-white outline-none focus:ring-2 focus:ring-blue-500/50 placeholder:text-slate-500"
+                        />
+                        {advisorSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setAdvisorSearch('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-[220px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                      {filteredAdvisors.length > 0 ? (
+                        filteredAdvisors.map(a => {
+                          const isSelected = formData.advisorId === a.id.toString();
+                          return (
+                            <div
+                              key={a.id}
+                              onClick={() => {
+                                setFormData({ ...formData, advisorId: a.id.toString() });
+                                setIsAdvisorDropdownOpen(false);
+                                setAdvisorSearch('');
+                              }}
+                              className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${
+                                isSelected ? 'bg-blue-600/20 border border-blue-500/30 text-white' : 'hover:bg-slate-800/80 text-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs">
+                                  {a.name.charAt(0)}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-white">{a.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono">{a.code} {a.email ? `• ${a.email}` : ''}</p>
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">Selected</span>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                          No advisors found matching "{advisorSearch}"
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-6">

@@ -131,44 +131,16 @@ public class SubmissionService : ISubmissionService
     public async Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetAdvisorSubmissionsAsync(int page = 1, int pageSize = 1000)
     {
         var advisorId = GetFirebaseUserId();
-        var cacheKey = $"{_cacheKeyPrefix}Advisor_{advisorId}_{page}_{pageSize}";
-
-        if (!_cache.TryGetValue(cacheKey, out (IEnumerable<SubmissionResponseDto> Items, int TotalCount) result))
-        {
-            var (submissions, totalCount) = await _repository.GetByAdvisorIdAsync(advisorId, page, pageSize);
-            var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
-            result = (mapped, totalCount);
-
-            var cacheOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(5))
-                .SetAbsoluteExpiration(TimeSpan.FromHours(1))
-                .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
-
-            _cache.Set(cacheKey, result, cacheOptions);
-        }
-        
-        return result;
+        var (submissions, totalCount) = await _repository.GetByAdvisorIdAsync(advisorId, page, pageSize);
+        var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+        return (mapped, totalCount);
     }
 
     public async Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetAllSubmissionsAsync(int page = 1, int pageSize = 1000)
     {
-        var cacheKey = $"{_cacheKeyPrefix}All_{page}_{pageSize}";
-
-        if (!_cache.TryGetValue(cacheKey, out (IEnumerable<SubmissionResponseDto> Items, int TotalCount) result))
-        {
-            var (submissions, totalCount) = await _repository.GetAllAsync(page, pageSize);
-            var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
-            result = (mapped, totalCount);
-
-            var cacheOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(5))
-                .SetAbsoluteExpiration(TimeSpan.FromHours(1))
-                .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
-
-            _cache.Set(cacheKey, result, cacheOptions);
-        }
-
-        return result;
+        var (submissions, totalCount) = await _repository.GetAllAsync(page, pageSize);
+        var mapped = _mapper.Map<IEnumerable<SubmissionResponseDto>>(submissions);
+        return (mapped, totalCount);
     }
 
     public async Task<(IEnumerable<SubmissionResponseDto> Items, int TotalCount)> GetSubmissionsByAdvisorIdAsync(int advisorId, int page = 1, int pageSize = 1000)

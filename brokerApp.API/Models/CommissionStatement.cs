@@ -19,6 +19,7 @@ public class CommissionStatement
     
     public ICollection<StatementItem> Items { get; set; } = new List<StatementItem>();
     public ICollection<MovementItem> MovementItems { get; set; } = new List<MovementItem>();
+    public ICollection<UnpayablePolicyItem> UnpayableItems { get; set; } = new List<UnpayablePolicyItem>();
 }
 
 public class StatementItem
@@ -36,8 +37,13 @@ public class StatementItem
     public string Category { get; set; } = "Unknown"; // Lapse, First Year, Second Year
     
     public string? SalesForceName { get; set; }
+    public string? Product { get; set; }
+    public DateTime? CaptureDate { get; set; }
+    public decimal? GrossCommission { get; set; }
+    public decimal? CommissionRetention { get; set; }
     public decimal? ClawBack { get; set; }
     public decimal? ClawBackRetention { get; set; }
+    public decimal? NettCommission { get; set; }
     public string? ClawBackReason { get; set; }
 
     // Tracking the match
@@ -61,6 +67,7 @@ public class MovementItem
     public string MovementType { get; set; } = string.Empty; 
     public DateTime? EffectiveDate { get; set; }
     public decimal Premium { get; set; }
+    public decimal Amount { get; set; }
     public string Category { get; set; } = "Unknown";
 
     // Tracking the match
@@ -72,3 +79,29 @@ public class MovementItem
     public bool IsMatched => MatchedSubmissionId.HasValue;
     public bool IsConfirmed { get; set; }
 }
+
+public class UnpayablePolicyItem
+{
+    public int Id { get; set; }
+    public int CommissionStatementId { get; set; }
+    public CommissionStatement Statement { get; set; } = null!;
+
+    public string PolicyNumber { get; set; } = string.Empty;
+    public string? PolicyId { get; set; }
+    public string ClientName { get; set; } = string.Empty;
+    public string? ClientMobile { get; set; }
+    public decimal Premium { get; set; }
+    public decimal PremiumBalance { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string? PolicyStatus { get; set; }
+    public string? Paymethod { get; set; }
+    public DateTime? CapturedDate { get; set; }
+    public DateTime? InceptionDate { get; set; }
+
+    // Tracking match to internal advisor/submission
+    public int? MatchedSubmissionId { get; set; }
+    public Submission? MatchedSubmission { get; set; }
+    public string? AdvisorName { get; set; }
+    public bool IsMatched => MatchedSubmissionId.HasValue;
+}
+

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { DollarSign, CheckCircle, X, Loader2, Calendar, Search, Filter, CreditCard, AlertCircle, Package, FileText } from 'lucide-react';
+import { DollarSign, CheckCircle, X, Loader2, Calendar, Search, Filter, CreditCard, AlertCircle, Package, FileText, Printer } from 'lucide-react';
 import { financialsApi } from './lib/api';
 import type { Commission, CommissionStatement, AccountAdjustment } from './lib/types';
 import { DataTable } from './components/DataTable';
@@ -296,44 +296,74 @@ const SettlementsPage: React.FC = () => {
         />
       </div>
 
+      {/* Policy Breakdown Modal */}
       {showBreakdownModal && selectedGroupPayout && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
               <div>
-                <h3 className="font-bold text-white text-sm">Policy Breakdown</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{selectedGroupPayout.advisorName} - {selectedGroupPayout.statementName}</p>
+                <h3 className="font-bold text-white text-lg">Policy Breakdown & Commission Statement</h3>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{selectedGroupPayout.advisorName} - {selectedGroupPayout.statementName}</p>
               </div>
-              <button onClick={() => setShowBreakdownModal(false)}><X className="w-4 h-4 text-slate-500" /></button>
+              <button onClick={() => setShowBreakdownModal(false)}><X className="w-5 h-5 text-slate-400 hover:text-white" /></button>
             </div>
-            <div className="p-0 overflow-y-auto flex-1">
-               <table className="w-full text-left text-xs">
-                 <thead className="bg-slate-800/50 sticky top-0">
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
+               <table className="w-full text-left text-xs border-collapse min-w-[800px]">
+                 <thead className="bg-slate-800/80 sticky top-0 backdrop-blur-sm text-[10px] font-black uppercase text-slate-400 tracking-wider">
                     <tr>
-                      <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-tighter">Client Name</th>
-                      <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-tighter">Reference</th>
-                      <th className="px-4 py-3 font-black text-slate-500 uppercase tracking-tighter text-right">Amount</th>
+                      <th className="px-3 py-2.5">Client Name</th>
+                      <th className="px-3 py-2.5">Policy #</th>
+                      <th className="px-3 py-2.5">Product</th>
+                      <th className="px-3 py-2.5 text-right">Premium</th>
+                      <th className="px-3 py-2.5 text-right">Gross Comm</th>
+                      <th className="px-3 py-2.5 text-right">Retention</th>
+                      <th className="px-3 py-2.5 text-right">Clawback (G)</th>
+                      <th className="px-3 py-2.5 text-right">Clawback (R)</th>
+                      <th className="px-3 py-2.5 text-right font-black">Net Comm</th>
+                      <th className="px-3 py-2.5 text-center font-black">Split %</th>
+                      <th className="px-3 py-2.5 text-right font-black text-emerald-400">Advisor Net</th>
                     </tr>
                  </thead>
-                 <tbody className="divide-y divide-slate-800">
+                 <tbody className="divide-y divide-slate-800 text-xs">
                     {commissions
                       .filter(c => c.advisorId === selectedGroupPayout.advisorId && c.commissionStatementId === selectedGroupPayout.statementId)
-                      .map(c => (
-                        <tr key={c.id} className="hover:bg-slate-800/30">
-                          <td className="px-4 py-3 font-bold text-white">{c.applicantSurname} {c.applicantInitials}</td>
-                          <td className="px-4 py-3 text-slate-400 font-mono text-[10px]">{c.payoutReference}</td>
-                          <td className={`px-4 py-3 text-right font-black ${c.commissionAmount < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                            R {c.commissionAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))
+                      .map(c => {
+                        const isDeduction = c.commissionAmount < 0 && c.payoutReference?.startsWith('DEDUCTION:');
+                        const grossComm = c.grossCommission || c.nettCommission || c.commissionAmount;
+                        const ret = c.commissionRetention || 0;
+                        const cbGross = c.clawBackGross || 0;
+                        const cbRet = c.clawBackRetention || 0;
+                        const netComm = c.nettCommission || (grossComm - ret - cbGross + cbRet);
+                        const splitPct = c.splitPercentage || 70;
+                        const advisorNet = c.commissionAmount;
+
+                        return (
+                          <tr key={c.id} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="px-3 py-2 font-bold text-white">
+                              {c.applicantSurname ? `${c.applicantSurname} ${c.applicantInitials}` : c.payoutReference || 'N/A'}
+                            </td>
+                            <td className="px-3 py-2 text-slate-400 font-mono text-[10px]">{c.policyNumber || '-'}</td>
+                            <td className="px-3 py-2 text-slate-300">{c.product || (isDeduction ? 'Adjustment' : 'Excellence')}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{c.premium ? `R ${c.premium.toFixed(2)}` : '-'}</td>
+                            <td className="px-3 py-2 text-right text-slate-300">{isDeduction ? '-' : `R ${grossComm.toFixed(2)}`}</td>
+                            <td className="px-3 py-2 text-right text-slate-400">{ret ? `R ${ret.toFixed(2)}` : '-'}</td>
+                            <td className="px-3 py-2 text-right text-red-400">{cbGross ? `R ${cbGross.toFixed(2)}` : '-'}</td>
+                            <td className="px-3 py-2 text-right text-emerald-400">{cbRet ? `R ${cbRet.toFixed(2)}` : '-'}</td>
+                            <td className="px-3 py-2 text-right text-slate-200 font-bold">{isDeduction ? '-' : `R ${netComm.toFixed(2)}`}</td>
+                            <td className="px-3 py-2 text-center text-blue-400 font-mono font-bold">{isDeduction ? '-' : `${splitPct}%`}</td>
+                            <td className={`px-3 py-2 text-right font-black ${advisorNet < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                              R {advisorNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })
                     }
                  </tbody>
                </table>
             </div>
-            <div className="p-4 bg-slate-800/50 border-t border-slate-800 flex justify-between items-center">
-               <p className="text-[10px] font-black text-slate-500 uppercase">Total Items: {selectedGroupPayout.commissionCount}</p>
-               <p className="text-lg font-black text-white">Total: R {selectedGroupPayout.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <div className="p-6 bg-slate-800/50 border-t border-slate-800 flex justify-between items-center">
+               <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Total Items: {selectedGroupPayout.commissionCount}</p>
+               <p className="text-xl font-black text-white">Total Payout: <span className="text-emerald-400">R {selectedGroupPayout.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></p>
             </div>
           </div>
         </div>
@@ -347,7 +377,16 @@ const SettlementsPage: React.FC = () => {
                 <h3 className="text-xl font-black text-white">Bulk Settlement: {selectedGroupPayout.advisorName}</h3>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">{selectedGroupPayout.statementName}</p>
               </div>
-              <button onClick={() => setShowGroupPayoutModal(false)}><X className="w-6 h-6 text-slate-500 hover:text-white transition-colors" /></button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => window.print()} 
+                  className="px-4 py-2 bg-emerald-600/10 border border-emerald-500/20 hover:bg-emerald-600/20 text-emerald-400 rounded-xl transition-all flex items-center gap-2 text-xs font-bold"
+                >
+                  <Printer className="w-4 h-4" />
+                  Print Settlement
+                </button>
+                <button onClick={() => setShowGroupPayoutModal(false)}><X className="w-6 h-6 text-slate-500 hover:text-white transition-colors" /></button>
+              </div>
             </div>
             
             <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
@@ -537,6 +576,72 @@ const SettlementsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Printable Settlement Zone */}
+      {showGroupPayoutModal && selectedGroupPayout && (
+        <div id="print-zone">
+          <div className="payslip-page bg-white p-8 text-black">
+            <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-6">
+              <div>
+                <h1 className="text-xl font-black uppercase text-slate-900">Settlement Statement</h1>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">{selectedGroupPayout.statementName}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[8px] font-black uppercase text-slate-400">Payout Reference</p>
+                <p className="text-sm font-bold text-slate-900">{payoutRef || 'N/A'}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-8 mb-6">
+              <div>
+                <p className="text-[8px] font-black uppercase text-slate-400">Advisor</p>
+                <p className="text-base font-black text-slate-900">{selectedGroupPayout.advisorName}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[8px] font-black uppercase text-slate-400">Net Settlement Payout</p>
+                <p className="text-2xl font-black text-slate-900">R {netPayout.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </div>
+            </div>
+
+            <table className="w-full mb-6 border-collapse text-left text-xs">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-300 font-bold uppercase">
+                  <th className="p-2">Description</th>
+                  <th className="p-2 text-right">Gross Earnings</th>
+                  <th className="p-2 text-right">Deductions</th>
+                  <th className="p-2 text-right font-black">Net Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="p-2 font-bold">Gross Commissions ({selectedGroupPayout.commissionCount} items)</td>
+                  <td className="p-2 text-right font-mono">R {selectedGroupPayout.totalAmount.toFixed(2)}</td>
+                  <td className="p-2 text-right">-</td>
+                  <td className="p-2 text-right font-bold font-mono">R {selectedGroupPayout.totalAmount.toFixed(2)}</td>
+                </tr>
+                {Object.entries(deductionAmounts).filter(([_, amt]) => amt > 0).map(([id, amt]) => {
+                  const adj = outstandingAdjustments.find(a => a.id === parseInt(id));
+                  return (
+                    <tr key={id} className="text-red-700 font-medium">
+                      <td className="p-2">Deduction: {adj?.description || 'Adjustment ' + id}</td>
+                      <td className="p-2 text-right">-</td>
+                      <td className="p-2 text-right font-mono">R {amt.toFixed(2)}</td>
+                      <td className="p-2 text-right font-bold font-mono">- R {amt.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100 font-black border-t-2 border-slate-900 text-sm">
+                  <td className="p-2 uppercase">Total Settlement EFT</td>
+                  <td className="p-2 text-right font-mono">R {selectedGroupPayout.totalAmount.toFixed(2)}</td>
+                  <td className="p-2 text-right text-red-700 font-mono">R {totalDeductions.toFixed(2)}</td>
+                  <td className="p-2 text-right text-slate-900 font-mono">R {netPayout.toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
       )}

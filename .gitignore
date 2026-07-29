@@ -69,3 +69,8 @@ items.txt
 infra/terraform/**/terraform.tfstate
 infra/terraform/**/terraform.tfstate.backup
 infra/terraform/**/plan-output.txt
+
+# Publish folders & key files
+publish/
+brokerApp.API/publish/
+*key*.json

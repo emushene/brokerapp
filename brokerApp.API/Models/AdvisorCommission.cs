@@ -20,6 +20,17 @@ public class AdvisorCommission
     public Advisor Advisor { get; set; } = null!;
     
     public decimal CommissionAmount { get; set; }
+    public decimal GrossCommission { get; set; }
+    public decimal CommissionRetention { get; set; }
+    public decimal ClawBackGross { get; set; }
+    public decimal ClawBackRetention { get; set; }
+    public decimal NettCommission { get; set; }
+    
+    public string? Product { get; set; }
+    public DateTime? CaptureDate { get; set; }
+    public string? ClawBackReason { get; set; }
+    public decimal SplitPercentage { get; set; } = 70.0m;
+
     public DateTime DateCalculated { get; set; } = DateTime.UtcNow;
 
     public bool IsPaid { get; set; }

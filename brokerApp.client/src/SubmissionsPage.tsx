@@ -327,11 +327,7 @@ const SubmissionsPage: React.FC = () => {
     {
       header: 'Method',
       accessor: (s) => (
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase border ${
-          s.method === 'Salary' 
-            ? 'bg-slate-800 text-blue-400 border-blue-500/30' 
-            : 'bg-slate-800 text-green-400 border-green-500/30'
-        }`}>
+        <span className="text-[10px] font-medium px-2 py-0.5 rounded uppercase border tracking-wider bg-slate-800 text-slate-300 border-slate-700/80">
           {s.method}
         </span>
       ),
@@ -342,7 +338,7 @@ const SubmissionsPage: React.FC = () => {
       header: 'Premium',
       accessor: (s) => (
         <div>
-          <div className="font-bold text-green-500 text-xs">R {s.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div className="font-semibold text-slate-200 text-xs">R {s.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div className="text-[10px] text-slate-500 uppercase">Ref: {s.salaryRefNo}</div>
         </div>
       ),

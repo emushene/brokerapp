@@ -10,7 +10,7 @@ public class Advisor
     public string PhoneNumber { get; set; } = string.Empty;
     
     public decimal CommissionPercentage1stYear { get; set; } = 70.0m;
-    public decimal CommissionPercentage2ndYear { get; set; } = 70.0m;
+    public decimal CommissionPercentage2ndYear { get; set; } = 45.0m;
     
     public string? SalesforceName { get; set; }
 

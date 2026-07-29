@@ -79,7 +79,7 @@ const AdvisorsPage: React.FC = () => {
     defaultValues: {
       name: '', email: '', code: '', phoneNumber: '',
       commissionPercentage1stYear: 70,
-      commissionPercentage2ndYear: 70,
+      commissionPercentage2ndYear: 45,
     }
   });
 

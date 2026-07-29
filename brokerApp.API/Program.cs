@@ -65,6 +65,7 @@ builder.Services.AddScoped<IFileStorageService, GoogleCloudStorageService>();
 builder.Services.AddScoped<IGoogleDriveSyncService, GoogleDriveSyncService>();
 builder.Services.AddScoped<IGoogleSheetsService, GoogleSheetsService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IPdfService, PdfService>();
 
 builder.Services.AddHostedService<GoogleDriveSyncWorker>();
 
@@ -101,6 +102,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
 });
 
 // --------------------
@@ -179,6 +181,12 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
+}
 
 // --------------------
 // PIPELINE

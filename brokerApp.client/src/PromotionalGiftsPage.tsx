@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Package, Plus, Loader2, Calendar, User, Search, Gift, Award, CheckCircle, Clock, Trash2, Wallet, Hash } from 'lucide-react';
 import { financialsApi, advisorsApi, advisorGroupsApi } from './lib/api';
 import { AdjustmentType, AdjustmentStatus } from './lib/types';
@@ -26,6 +26,37 @@ const PromotionalGiftsPage: React.FC = () => {
     quantity: '1',
     description: ''
   });
+
+  // Searchable Target Selection State
+  const [targetSearch, setTargetSearch] = useState('');
+  const [isTargetDropdownOpen, setIsTargetDropdownOpen] = useState(false);
+
+  const filteredTargets = useMemo(() => {
+    const q = targetSearch.trim().toLowerCase();
+    if (issueData.targetType === 'individual') {
+      if (!q) return advisors;
+      return advisors.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        a.code.toLowerCase().includes(q) ||
+        (a.email && a.email.toLowerCase().includes(q))
+      );
+    } else {
+      if (!q) return groups;
+      return groups.filter(g =>
+        g.name.toLowerCase().includes(q) ||
+        (g.code && g.code.toLowerCase().includes(q))
+      );
+    }
+  }, [advisors, groups, issueData.targetType, targetSearch]);
+
+  const selectedTarget = useMemo(() => {
+    if (!issueData.targetId) return null;
+    if (issueData.targetType === 'individual') {
+      return advisors.find(a => a.id.toString() === issueData.targetId) || null;
+    } else {
+      return groups.find(g => g.id.toString() === issueData.targetId) || null;
+    }
+  }, [advisors, groups, issueData.targetType, issueData.targetId]);
 
   // Form State for Catalog
   const [catalogData, setCatalogData] = useState({
@@ -266,34 +297,117 @@ const PromotionalGiftsPage: React.FC = () => {
               <div className="flex bg-slate-800 p-1 rounded-2xl">
                 <button 
                   type="button"
-                  onClick={() => setIssueData({...issueData, targetType: 'individual', targetId: ''})}
+                  onClick={() => {
+                    setIssueData({...issueData, targetType: 'individual', targetId: ''});
+                    setTargetSearch('');
+                    setIsTargetDropdownOpen(false);
+                  }}
                   className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${issueData.targetType === 'individual' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                   Individual
                 </button>
                 <button 
                   type="button"
-                  onClick={() => setIssueData({...issueData, targetType: 'group', targetId: ''})}
+                  onClick={() => {
+                    setIssueData({...issueData, targetType: 'group', targetId: ''});
+                    setTargetSearch('');
+                    setIsTargetDropdownOpen(false);
+                  }}
                   className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${issueData.targetType === 'group' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                   Group
                 </button>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Select {issueData.targetType === 'individual' ? 'Advisor' : 'Group'}</label>
-                <select
-                  required
-                  value={issueData.targetId}
-                  onChange={(e) => setIssueData({...issueData, targetId: e.target.value})}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 focus:ring-emerald-500/50"
+                
+                {/* Trigger Control */}
+                <div 
+                  onClick={() => setIsTargetDropdownOpen(!isTargetDropdownOpen)}
+                  className="w-full bg-slate-800 border border-slate-700 hover:border-slate-600 rounded-2xl px-5 py-3.5 text-white outline-none focus-within:ring-2 focus-within:ring-emerald-500/50 transition-all cursor-pointer flex items-center justify-between shadow-sm"
                 >
-                  <option value="">Select...</option>
-                  {issueData.targetType === 'individual' 
-                    ? advisors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)
-                    : groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)
-                  }
-                </select>
+                  {selectedTarget ? (
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-xs">
+                        {selectedTarget.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white leading-tight">{selectedTarget.name}</p>
+                        {selectedTarget.code && <p className="text-[10px] text-slate-400 font-mono">{selectedTarget.code}</p>}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 text-sm">Choose {issueData.targetType === 'individual' ? 'an advisor...' : 'a group...'}</span>
+                  )}
+                  <Search className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {/* Dropdown Menu */}
+                {isTargetDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-2 z-[80] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                    <div className="p-3 border-b border-slate-800 bg-slate-800/60">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder={`Search ${issueData.targetType === 'individual' ? 'advisor' : 'group'} by name or code...`}
+                          value={targetSearch}
+                          onChange={(e) => setTargetSearch(e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-8 py-2.5 text-xs text-white outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder:text-slate-500"
+                        />
+                        {targetSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setTargetSearch('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-h-[220px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                      {filteredTargets.length > 0 ? (
+                        filteredTargets.map((item: any) => {
+                          const isSelected = issueData.targetId === item.id.toString();
+                          return (
+                            <div
+                              key={item.id}
+                              onClick={() => {
+                                setIssueData({ ...issueData, targetId: item.id.toString() });
+                                setIsTargetDropdownOpen(false);
+                                setTargetSearch('');
+                              }}
+                              className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${
+                                isSelected ? 'bg-emerald-600/20 border border-emerald-500/30 text-white' : 'hover:bg-slate-800/80 text-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center font-bold text-xs">
+                                  {item.name.charAt(0)}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-white">{item.name}</p>
+                                  {item.code && <p className="text-[10px] text-slate-400 font-mono">{item.code}</p>}
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Selected</span>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                          No {issueData.targetType === 'individual' ? 'advisors' : 'groups'} found matching "{targetSearch}"
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

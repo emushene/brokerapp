@@ -20,6 +20,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<CommissionStatement> CommissionStatements { get; set; } = null!;
     public DbSet<StatementItem> StatementItems { get; set; } = null!;
     public DbSet<MovementItem> MovementItems { get; set; } = null!;
+    public DbSet<UnpayablePolicyItem> UnpayablePolicyItems { get; set; } = null!;
     public DbSet<PolicyRecord> PolicyRecords { get; set; } = null!;
     public DbSet<PromotionalItem> PromotionalItems { get; set; } = null!;
     public DbSet<AccountAdjustment> AccountAdjustments { get; set; } = null!;
@@ -102,6 +103,11 @@ public class ApplicationDbContext : DbContext
             .WithOne(i => i.Statement)
             .HasForeignKey(i => i.CommissionStatementId);
 
+        modelBuilder.Entity<CommissionStatement>()
+            .HasMany(s => s.UnpayableItems)
+            .WithOne(i => i.Statement)
+            .HasForeignKey(i => i.CommissionStatementId);
+
         modelBuilder.Entity<StatementItem>()
             .HasOne(i => i.MatchedSubmission)
             .WithMany()
@@ -113,6 +119,18 @@ public class ApplicationDbContext : DbContext
             .WithMany()
             .HasForeignKey(i => i.MatchedSubmissionId)
             .IsRequired(false);
+
+        modelBuilder.Entity<UnpayablePolicyItem>()
+            .HasOne(i => i.MatchedSubmission)
+            .WithMany()
+            .HasForeignKey(i => i.MatchedSubmissionId)
+            .IsRequired(false);
+
+        modelBuilder.Entity<SubmissionDocument>(entity =>
+        {
+            entity.HasIndex(d => d.StorageKey)
+                  .IsUnique();
+        });
 
         modelBuilder.Entity<AccountAdjustment>(entity =>
         {

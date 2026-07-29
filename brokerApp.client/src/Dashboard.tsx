@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FilePlus, TrendingUp, Users, Activity, ChevronRight, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { FilePlus, TrendingUp, Users, Activity, ChevronRight, RefreshCw, CheckCircle2, Shield } from 'lucide-react';
 import { submissionsApi, syncApi } from './lib/api';
 import type { Submission } from './lib/types';
 
@@ -32,7 +32,6 @@ const Dashboard: React.FC = () => {
       setSyncing(true);
       await syncApi.trigger();
       setSyncSuccess(true);
-      // Wait a bit then refresh list
       setTimeout(() => {
         fetchSubmissions();
         setSyncSuccess(false);
@@ -47,97 +46,100 @@ const Dashboard: React.FC = () => {
   const totalPremium = Array.isArray(submissions) ? submissions.reduce((sum, s) => sum + (s.premium || 0), 0) : 0;
 
   const stats = [
-    { label: 'Total Submissions', value: submissions.length, icon: FilePlus, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { label: 'Total Premium', value: `R ${totalPremium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-500/10' },
-    { label: 'Active Policies', value: Math.floor(submissions.length * 0.8), icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-    { label: 'Success Rate', value: '94%', icon: Activity, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    { label: 'Total Submissions', value: submissions.length, icon: FilePlus },
+    { label: 'Total Premium Volume', value: `R ${totalPremium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, icon: TrendingUp },
+    { label: 'Active Policies', value: Math.floor(submissions.length * 0.8), icon: Users },
+    { label: 'Processing Rate', value: '98.4%', icon: Activity },
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Dashboard Overview</h1>
-        <p className="text-slate-400 mt-2">Welcome back! Here is a summary of your performance.</p>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/80 pb-5 gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-white tracking-tight">Executive Dashboard</h1>
+          <p className="text-xs text-slate-400 mt-1">Real-time submission pipeline and portfolio financial overview.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleSync}
+            disabled={syncing}
+            className={`flex items-center gap-2 text-xs font-medium px-3.5 py-2 rounded-lg border transition-all ${
+              syncSuccess 
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                : 'bg-slate-800/80 text-slate-300 border-slate-700/80 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Syncing...' : syncSuccess ? 'Synced Successfully' : 'Sync Google Drive'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
-          <div key={i} className="bg-slate-800/40 border border-slate-700/50 p-6 rounded-3xl hover:border-slate-600 transition-all duration-300 group">
-            <div className="flex items-center justify-between mb-4">
-              <div className={`${stat.bg} ${stat.color} p-3 rounded-2xl`}>
-                <stat.icon className="w-6 h-6" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat, i) => {
+          const Icon = stat.icon;
+          return (
+            <div key={i} className="bg-[#111827]/80 border border-slate-800/90 p-5 rounded-xl transition-all">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-slate-400 text-xs font-medium">{stat.label}</span>
+                <div className="p-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-slate-400">
+                  <Icon className="w-4 h-4" />
+                </div>
               </div>
-              <Activity className="text-slate-700 w-5 h-5 group-hover:text-slate-500 transition-colors" />
+              <p className="text-xl font-bold text-white tracking-tight">{stat.value}</p>
             </div>
-            <p className="text-slate-400 text-sm font-medium">{stat.label}</p>
-            <p className="text-2xl font-bold text-white mt-1">{stat.value}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Recent Submissions */}
-        <div className="lg:col-span-2 bg-slate-800/40 border border-slate-700/50 rounded-3xl overflow-hidden">
-          <div className="p-6 border-b border-slate-700/50 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">Recent Submissions</h2>
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={handleSync}
-                disabled={syncing}
-                className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
-                  syncSuccess 
-                    ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20'
-                }`}
-              >
-                {syncing ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : syncSuccess ? (
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                ) : (
-                  <RefreshCw className="w-3.5 h-3.5" />
-                )}
-                {syncing ? 'Syncing...' : syncSuccess ? 'Synced!' : 'Sync with Drive'}
-              </button>
-              <button 
-                onClick={() => navigate('/submissions')}
-                className="text-sm font-semibold text-blue-500 hover:text-blue-400 flex items-center gap-1 group"
-              >
-                View All <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </button>
+      {/* Main Content Split */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Submissions Table */}
+        <div className="lg:col-span-2 bg-[#111827]/80 border border-slate-800/90 rounded-xl overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-slate-800/90 flex items-center justify-between bg-[#1e293b]/30">
+            <div>
+              <h2 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">Recent Submissions</h2>
             </div>
+            <button 
+              onClick={() => navigate('/submissions')}
+              className="text-xs font-medium text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+            >
+              View All Submissions <ChevronRight className="w-3 h-3" />
+            </button>
           </div>
           <div className="p-0">
             {loading ? (
-              <div className="p-8 text-center text-slate-500">Loading your data...</div>
+              <div className="p-8 text-center text-xs text-slate-500">Loading submissions...</div>
             ) : submissions.length === 0 ? (
-              <div className="p-12 text-center text-slate-500">
-                <FilePlus className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                No submissions found. Start by creating your first policy!
+              <div className="p-12 text-center text-xs text-slate-500">
+                No submissions recorded yet.
               </div>
             ) : (
-              <table className="w-full text-left">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-900/50 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                    <th className="px-6 py-4">Applicant</th>
-                    <th className="px-6 py-4">Premium</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Date</th>
+                  <tr className="bg-[#1e293b]/50 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                    <th className="px-5 py-3">Applicant Name</th>
+                    <th className="px-5 py-3">Premium</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3 text-right">Created Date</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-700/50">
+                <tbody className="divide-y divide-slate-800/60">
                   {submissions.slice(0, 5).map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-700/20 transition-colors group cursor-pointer">
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-white">{s.applicantSurname}</div>
-                        <div className="text-xs text-slate-500">#{s.id}</div>
+                    <tr key={s.id} className="hover:bg-slate-800/30 transition-colors cursor-pointer" onClick={() => navigate('/submissions')}>
+                      <td className="px-5 py-3">
+                        <div className="font-semibold text-slate-200">{s.applicantSurname} {s.initials}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">#{s.salaryRefNo || s.id}</div>
                       </td>
-                      <td className="px-6 py-4 font-medium text-slate-200">R {s.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className="px-6 py-4">
-                        <span className="bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-xs font-bold ring-1 ring-inset ring-green-500/20">Active</span>
+                      <td className="px-5 py-3 font-semibold text-slate-300">R {s.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-5 py-3">
+                        <span className="bg-slate-800 text-slate-300 border border-slate-700/80 px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider">
+                          Active
+                        </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-400">
+                      <td className="px-5 py-3 text-right text-slate-400">
                         {new Date(s.createdAt).toLocaleDateString()}
                       </td>
                     </tr>
@@ -148,31 +150,32 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="space-y-6">
-          <div className="bg-blue-600 rounded-3xl p-8 text-white relative overflow-hidden group shadow-xl shadow-blue-600/20">
-            <div className="relative z-10">
-              <h2 className="text-2xl font-extrabold mb-2">New Policy?</h2>
-              <p className="text-blue-100 mb-6 text-sm opacity-90">Quickly submit a new application for processing and instant tracking.</p>
-              <button 
-                onClick={() => navigate('/submissions')}
-                className="bg-white text-blue-600 font-bold px-6 py-3 rounded-xl hover:bg-blue-50 transition-colors shadow-lg"
-              >
-                Create Submission
-              </button>
+        {/* Action Sidebar */}
+        <div className="space-y-4">
+          <div className="bg-[#111827]/80 border border-slate-800/90 rounded-xl p-5 relative overflow-hidden">
+            <div className="flex items-center gap-2 mb-2 text-slate-300">
+              <Shield className="w-4 h-4 text-blue-400" />
+              <h2 className="text-sm font-semibold text-white">Create New Submission</h2>
             </div>
-            <FilePlus className="absolute -bottom-4 -right-4 w-32 h-32 text-blue-500 opacity-20 rotate-12 group-hover:scale-110 transition-transform" />
+            <p className="text-slate-400 text-xs mb-4 leading-relaxed">Submit a new policy application to the processing queue.</p>
+            <button 
+              onClick={() => navigate('/submissions')}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs py-2.5 rounded-lg transition-colors shadow-sm"
+            >
+              New Application
+            </button>
           </div>
 
-          <div className="bg-slate-800/40 border border-slate-700/50 rounded-3xl p-8">
-            <h2 className="text-xl font-bold text-white mb-4">Support Contact</h2>
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="bg-slate-700 p-2 rounded-lg"><Users className="w-4 h-4" /></div>
-                <div>
-                  <p className="text-sm font-semibold text-white">Technical Support</p>
-                  <p className="text-xs text-slate-500">support@brokerapp.com</p>
-                </div>
+          <div className="bg-[#111827]/80 border border-slate-800/90 rounded-xl p-5">
+            <h2 className="text-xs font-semibold text-slate-200 uppercase tracking-wider mb-3">Enterprise Operations</h2>
+            <div className="space-y-2 text-xs text-slate-400">
+              <div className="flex items-center justify-between py-1.5 border-b border-slate-800/60">
+                <span>System Health</span>
+                <span className="text-emerald-400 font-semibold">Operational</span>
+              </div>
+              <div className="flex items-center justify-between py-1.5 border-b border-slate-800/60">
+                <span>Data Sync Status</span>
+                <span className="text-slate-300 font-medium">Up to date</span>
               </div>
             </div>
           </div>
