@@ -24,4 +24,7 @@ public interface IFinancialsService
     Task<IEnumerable<AccountAdjustmentDto>> GetOutstandingAdjustmentsAsync(int? advisorId = null, int? groupId = null);
     Task ApplyDeductionAsync(int adjustmentId, decimal amount, int statementId, int? advisorId = null);
     Task ApplyDeductionToTypeAsync(int advisorId, AdjustmentType type, decimal amount, int statementId);
+    Task<AdvancesGiftsReportDto> GetAdvancesAndGiftsReportAsync(int page = 1, int pageSize = 10, string? searchTerm = null, string? typeFilter = null, string? statusFilter = null);
 }
+
+

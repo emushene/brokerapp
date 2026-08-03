@@ -121,9 +121,9 @@ public class ReconciliationService : IReconciliationService
 
                 var subType = row.Cell(typeCol).Value.ToString().Trim();
                 
-                // Strict Filtering: Only process First Year and Second Year Commission
-                var isFirstYear = subType.Equals("First Year Commission", StringComparison.OrdinalIgnoreCase);
-                var isSecondYear = subType.Equals("Second Year Commission", StringComparison.OrdinalIgnoreCase);
+                // Strict Verbatim Filtering: Only process First Year and Second Year Commission
+                var isFirstYear = subType.Equals("First Year Commission", StringComparison.OrdinalIgnoreCase) || subType.Equals("First Year Commision", StringComparison.OrdinalIgnoreCase);
+                var isSecondYear = subType.Equals("Second Year Commission", StringComparison.OrdinalIgnoreCase) || subType.Equals("Second Year Commision", StringComparison.OrdinalIgnoreCase);
 
                 if (!isFirstYear && !isSecondYear) 
                 {
@@ -149,7 +149,7 @@ public class ReconciliationService : IReconciliationService
                 };
 
                 // MATCHING & AUTO-REGISTRATION
-                var pKey = policyNumber.Trim();
+                var pKey = policyNumber.Trim().ToUpperInvariant();
                 masterPolicyMap.TryGetValue(pKey, out var masterMatch);
                 if (masterMatch != null)
                 {
@@ -196,7 +196,7 @@ public class ReconciliationService : IReconciliationService
                         // AUTO-REGISTER into Master
                         var newMaster = new PolicyRecord
                         {
-                            PolicyNumber = policyNumber,
+                            PolicyNumber = pKey,
                             Surname = subMatch.ApplicantSurname,
                             Initials = subMatch.Initials,
                             Premium = finalPremium,
@@ -209,6 +209,7 @@ public class ReconciliationService : IReconciliationService
                         
                         _context.PolicyRecords.Add(newMaster);
                         masterPolicies.Add(newMaster); // Add to local list for subsequent matches
+                        masterPolicyMap[pKey] = newMaster; // Update map to avoid EF duplicate tracking errors
 
                         moveItem.MatchedSubmissionId = subMatch.Id;
                         moveItem.MatchedSubmission = subMatch;
@@ -281,9 +282,9 @@ public class ReconciliationService : IReconciliationService
 
                 var subType = row.Cell(typeCol).Value.ToString().Trim();
                 
-                // Filtering: Process First Year and Second Year Commission (including Index Commission & Retention)
-                var isFirstYear = subType.Contains("First Year", StringComparison.OrdinalIgnoreCase);
-                var isSecondYear = subType.Contains("Second Year", StringComparison.OrdinalIgnoreCase);
+                // Strict Verbatim Filtering: Process First Year Commission and Second Year Commission verbatim only
+                var isFirstYear = subType.Equals("First Year Commission", StringComparison.OrdinalIgnoreCase) || subType.Equals("First Year Commision", StringComparison.OrdinalIgnoreCase);
+                var isSecondYear = subType.Equals("Second Year Commission", StringComparison.OrdinalIgnoreCase) || subType.Equals("Second Year Commision", StringComparison.OrdinalIgnoreCase);
 
                 if (!isFirstYear && !isSecondYear) 
                 {
@@ -337,7 +338,7 @@ public class ReconciliationService : IReconciliationService
                 };
 
                 // MATCHING & AUTO-REGISTRATION
-                var pKey = policyNumber.Trim();
+                var pKey = policyNumber.Trim().ToUpperInvariant();
                 masterPolicyMap.TryGetValue(pKey, out var masterMatch);
                 if (masterMatch != null)
                 {
@@ -384,7 +385,7 @@ public class ReconciliationService : IReconciliationService
                         // AUTO-REGISTER into Master
                         var newMaster = new PolicyRecord
                         {
-                            PolicyNumber = policyNumber,
+                            PolicyNumber = pKey,
                             Surname = subMatch.ApplicantSurname,
                             Initials = subMatch.Initials,
                             Premium = finalPremium,
@@ -397,6 +398,7 @@ public class ReconciliationService : IReconciliationService
                         
                         _context.PolicyRecords.Add(newMaster);
                         masterPolicies.Add(newMaster);
+                        masterPolicyMap[pKey] = newMaster; // Update map to avoid EF duplicate tracking errors
 
                         item.MatchedSubmissionId = subMatch.Id;
                         item.MatchedSubmission = subMatch;
@@ -702,10 +704,13 @@ public class ReconciliationService : IReconciliationService
         if (!string.IsNullOrEmpty(policyNumber))
         {
             var pKey = policyNumber.Trim();
-            if (subPolicyMap != null && subPolicyMap.TryGetValue(pKey, out var match))
+            if (subPolicyMap != null)
             {
-                isPolicyMatch = true;
-                return match;
+                if (subPolicyMap.TryGetValue(pKey, out var match))
+                {
+                    isPolicyMatch = true;
+                    return match;
+                }
             }
             else
             {
@@ -736,11 +741,22 @@ public class ReconciliationService : IReconciliationService
         // Smart Client Name Parsing
         var (surnameFromExcel, initialsFromExcel, fullFirstFromExcel) = ParseClientName(clientName);
 
-        // Filter candidate submissions using Surname Map if available to avoid full 69,000-item iteration
-        IEnumerable<Submission> candidatesPool = submissions;
-        if (subSurnameMap != null && !string.IsNullOrWhiteSpace(surnameFromExcel) && subSurnameMap.TryGetValue(surnameFromExcel.Trim(), out var matchedCandidates))
+        // Filter candidate submissions using Surname Map if available to avoid scanning 50,000 items
+        IEnumerable<Submission> candidatesPool;
+        if (subSurnameMap != null)
         {
-            candidatesPool = matchedCandidates;
+            if (!string.IsNullOrWhiteSpace(surnameFromExcel) && subSurnameMap.TryGetValue(surnameFromExcel.Trim(), out var matchedCandidates))
+            {
+                candidatesPool = matchedCandidates;
+            }
+            else
+            {
+                candidatesPool = Enumerable.Empty<Submission>();
+            }
+        }
+        else
+        {
+            candidatesPool = submissions;
         }
 
         // Candidates evaluation using Weighted Scoring

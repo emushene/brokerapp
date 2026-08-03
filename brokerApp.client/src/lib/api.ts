@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { auth } from './firebase';
-import type { Submission, SubmissionCreateDto, PolicyPaymentCreateDto, Commission, Advisor, CommissionStatement, AdvisorGroup, PromotionalItem, AccountAdjustment } from './types';
+import type { Submission, SubmissionCreateDto, PolicyPaymentCreateDto, Commission, Advisor, CommissionStatement, AdvisorGroup, PromotionalItem, AccountAdjustment, AdvancesGiftsReport } from './types';
 
 const api = axios.create({
   baseURL: '/api', // Use relative path for Vite dev proxy
@@ -219,7 +219,13 @@ export const financialsApi = {
   applyDeductionToType: async (advisorId: number, type: number, amount: number, statementId: number) => {
     await api.post(`/Financials/advisors/${advisorId}/adjustments/type/${type}/deduct`, { amount, statementId });
   },
+  getAdvancesAndGiftsReport: async (params?: { page?: number; pageSize?: number; searchTerm?: string; typeFilter?: string; statusFilter?: string }) => {
+    const response = await api.get<AdvancesGiftsReport>('/Financials/reports/advances-and-gifts', { params });
+    return response.data;
+  },
+
 };
+
 
 export const syncApi = {
   trigger: async () => {

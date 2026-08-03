@@ -825,12 +825,6 @@ public class FinancialsService : IFinancialsService
 
     public async Task<AccountAdjustmentDto> AddAdjustmentAsync(AccountAdjustment adjustment)
     {
-        // Business Rule: Advances are for individuals only
-        if (adjustment.Type == AdjustmentType.Advance && adjustment.AdvisorGroupId.HasValue)
-        {
-            throw new InvalidOperationException("Cash advances can only be assigned to individual advisors, not groups.");
-        }
-
         adjustment.RemainingBalance = adjustment.TotalAmount;
         adjustment.DateIncurred = DateTime.UtcNow;
         adjustment.Status = AdjustmentStatus.Pending;
@@ -847,6 +841,7 @@ public class FinancialsService : IFinancialsService
 
         return _mapper.Map<AccountAdjustmentDto>(reloaded);
     }
+
 
     public async Task<IEnumerable<AccountAdjustmentDto>> GetOutstandingAdjustmentsAsync(int? advisorId = null, int? groupId = null)
     {
@@ -950,4 +945,195 @@ public class FinancialsService : IFinancialsService
 
         _context.AdvisorCommissions.Add(deduction);
     }
+
+    public async Task<AdvancesGiftsReportDto> GetAdvancesAndGiftsReportAsync(int page = 1, int pageSize = 10, string? searchTerm = null, string? typeFilter = null, string? statusFilter = null)
+    {
+        var adjustments = await _context.AccountAdjustments
+            .Include(a => a.Advisor)
+            .Include(a => a.AdvisorGroup)
+            .Include(a => a.PromotionalItem)
+            .OrderByDescending(a => a.DateIncurred)
+            .ToListAsync();
+
+        var advisors = await _context.Advisors.ToListAsync();
+        var groups = await _context.AdvisorGroups
+            .Include(g => g.Members)
+            .ToListAsync();
+
+        var mappedAdjustments = _mapper.Map<List<AccountAdjustmentDto>>(adjustments);
+
+        // Advisor summaries
+        var advisorSummaries = new List<AdvisorDebtSummaryDto>();
+
+        foreach (var adv in advisors)
+        {
+            var advGroup = groups.FirstOrDefault(g => g.Members.Any(m => m.Id == adv.Id));
+            var advAdjustments = adjustments.Where(a => a.AdvisorId == adv.Id).ToList();
+
+            var advancesOwed = advAdjustments.Where(a => a.Type == AdjustmentType.Advance).Sum(a => a.RemainingBalance);
+            var giftsOwed = advAdjustments.Where(a => a.Type == AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance);
+            var otherOwed = advAdjustments.Where(a => a.Type != AdjustmentType.Advance && a.Type != AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance);
+
+            var initialAdvances = advAdjustments.Where(a => a.Type == AdjustmentType.Advance).Sum(a => a.TotalAmount);
+            var initialGifts = advAdjustments.Where(a => a.Type == AdjustmentType.PromotionalItem).Sum(a => a.TotalAmount);
+
+            var activeCount = advAdjustments.Count(a => a.RemainingBalance > 0);
+
+            // Evenly distribute 1/N share of Team/Group shared liabilities across all team members
+            if (advGroup != null && advGroup.Members.Count > 0)
+            {
+                var memberCount = advGroup.Members.Count;
+                var groupAdjustments = adjustments.Where(a => a.AdvisorGroupId == advGroup.Id).ToList();
+
+                var groupAdvOwed = groupAdjustments.Where(a => a.Type == AdjustmentType.Advance).Sum(a => a.RemainingBalance);
+                var groupGiftsOwed = groupAdjustments.Where(a => a.Type == AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance);
+                var groupOtherOwed = groupAdjustments.Where(a => a.Type != AdjustmentType.Advance && a.Type != AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance);
+
+                var groupInitAdv = groupAdjustments.Where(a => a.Type == AdjustmentType.Advance).Sum(a => a.TotalAmount);
+                var groupInitGifts = groupAdjustments.Where(a => a.Type == AdjustmentType.PromotionalItem).Sum(a => a.TotalAmount);
+
+                advancesOwed += Math.Round(groupAdvOwed / memberCount, 2);
+                giftsOwed += Math.Round(groupGiftsOwed / memberCount, 2);
+                otherOwed += Math.Round(groupOtherOwed / memberCount, 2);
+
+                initialAdvances += Math.Round(groupInitAdv / memberCount, 2);
+                initialGifts += Math.Round(groupInitGifts / memberCount, 2);
+
+                activeCount += groupAdjustments.Count(a => a.RemainingBalance > 0);
+            }
+
+            advisorSummaries.Add(new AdvisorDebtSummaryDto
+            {
+                AdvisorId = adv.Id,
+                AdvisorName = adv.Name,
+                AdvisorCode = adv.Code,
+                Email = adv.Email,
+                PhoneNumber = adv.PhoneNumber,
+                AdvisorGroupId = advGroup?.Id,
+                AdvisorGroupName = advGroup?.Name,
+                AdvancesOwed = advancesOwed,
+                GiftsOwed = giftsOwed,
+                OtherOwed = otherOwed,
+                TotalOwed = advancesOwed + giftsOwed + otherOwed,
+                TotalInitialAdvances = initialAdvances,
+                TotalInitialGifts = initialGifts,
+                ActiveAdjustmentsCount = activeCount
+            });
+        }
+
+        // Team summaries
+        var teamSummaries = new List<TeamDebtSummaryDto>();
+
+        foreach (var grp in groups)
+        {
+            var grpAdjustments = adjustments.Where(a => a.AdvisorGroupId == grp.Id).ToList();
+
+            var directAdvOwed = grpAdjustments.Where(a => a.Type == AdjustmentType.Advance).Sum(a => a.RemainingBalance);
+            var directGiftsOwed = grpAdjustments.Where(a => a.Type == AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance);
+            var directOtherOwed = grpAdjustments.Where(a => a.Type != AdjustmentType.Advance && a.Type != AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance);
+
+            var memberIds = grp.Members.Select(m => m.Id).ToList();
+            var memberSummaries = advisorSummaries.Where(a => memberIds.Contains(a.AdvisorId)).ToList();
+
+            // Personal member debts excluding their 1/N share of group debt (to avoid double counting in team totals)
+            var personalAdvOwed = memberSummaries.Sum(m => {
+                var personalAdjustments = adjustments.Where(a => a.AdvisorId == m.AdvisorId && a.Type == AdjustmentType.Advance);
+                return personalAdjustments.Sum(a => a.RemainingBalance);
+            });
+
+            var personalGiftsOwed = memberSummaries.Sum(m => {
+                var personalAdjustments = adjustments.Where(a => a.AdvisorId == m.AdvisorId && a.Type == AdjustmentType.PromotionalItem);
+                return personalAdjustments.Sum(a => a.RemainingBalance);
+            });
+
+            var totalTeamOwed = directAdvOwed + directGiftsOwed + directOtherOwed + personalAdvOwed + personalGiftsOwed;
+
+            teamSummaries.Add(new TeamDebtSummaryDto
+            {
+                GroupId = grp.Id,
+                GroupName = grp.Name,
+                Description = grp.Description,
+                DirectGroupAdvancesOwed = directAdvOwed,
+                DirectGroupGiftsOwed = directGiftsOwed,
+                DirectGroupOtherOwed = directOtherOwed,
+                MembersAdvancesOwed = personalAdvOwed,
+                MembersGiftsOwed = personalGiftsOwed,
+                TotalTeamOwed = totalTeamOwed,
+                MemberCount = grp.Members.Count,
+                Members = memberSummaries
+            });
+        }
+
+
+        // Add Unassigned / Individual Advisors group so no advisor is excluded from Team View
+        var unassignedSummaries = advisorSummaries.Where(a => !a.AdvisorGroupId.HasValue).ToList();
+        if (unassignedSummaries.Any())
+        {
+            var unassignedAdvOwed = unassignedSummaries.Sum(m => m.AdvancesOwed);
+            var unassignedGiftsOwed = unassignedSummaries.Sum(m => m.GiftsOwed);
+            var unassignedOtherOwed = unassignedSummaries.Sum(m => m.OtherOwed);
+
+            teamSummaries.Add(new TeamDebtSummaryDto
+            {
+                GroupId = 0,
+                GroupName = "Individual Advisors (Unassigned)",
+                Description = "Advisors operating individually (not assigned to a specific team)",
+                DirectGroupAdvancesOwed = 0,
+                DirectGroupGiftsOwed = 0,
+                DirectGroupOtherOwed = 0,
+                MembersAdvancesOwed = unassignedAdvOwed,
+                MembersGiftsOwed = unassignedGiftsOwed,
+                TotalTeamOwed = unassignedAdvOwed + unassignedGiftsOwed + unassignedOtherOwed,
+                MemberCount = unassignedSummaries.Count,
+                Members = unassignedSummaries
+            });
+        }
+
+        var activeAdjustments = adjustments.Where(a => a.RemainingBalance > 0).ToList();
+
+        var summary = new ReportSummaryDto
+        {
+            TotalAdvancesOwed = activeAdjustments.Where(a => a.Type == AdjustmentType.Advance).Sum(a => a.RemainingBalance),
+            TotalGiftsOwed = activeAdjustments.Where(a => a.Type == AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance),
+            TotalOtherOwed = activeAdjustments.Where(a => a.Type != AdjustmentType.Advance && a.Type != AdjustmentType.PromotionalItem).Sum(a => a.RemainingBalance),
+            GrandTotalOwed = activeAdjustments.Sum(a => a.RemainingBalance),
+            ActiveDebtorAdvisorsCount = advisorSummaries.Count(a => a.TotalOwed > 0),
+            ActiveDebtorTeamsCount = teamSummaries.Count(t => t.TotalTeamOwed > 0),
+            TotalActiveAdjustmentsCount = activeAdjustments.Count
+        };
+
+        var sortedAdvisors = advisorSummaries.OrderByDescending(a => a.TotalOwed).ToList();
+        var sortedTeams = teamSummaries.OrderByDescending(t => t.TotalTeamOwed).ToList();
+
+        var totalAdvisorsCount = sortedAdvisors.Count;
+        var totalTeamsCount = sortedTeams.Count;
+        var totalAdjustmentsCount = mappedAdjustments.Count;
+
+        List<AdvisorDebtSummaryDto> pagedAdvisors = sortedAdvisors;
+        List<TeamDebtSummaryDto> pagedTeams = sortedTeams;
+        List<AccountAdjustmentDto> pagedAdjustments = mappedAdjustments;
+
+        if (pageSize > 0)
+        {
+            var skip = Math.Max(0, (page - 1) * pageSize);
+            pagedAdvisors = sortedAdvisors.Skip(skip).Take(pageSize).ToList();
+            pagedTeams = sortedTeams.Skip(skip).Take(pageSize).ToList();
+            pagedAdjustments = mappedAdjustments.Skip(skip).Take(pageSize).ToList();
+        }
+
+        return new AdvancesGiftsReportDto
+        {
+            Summary = summary,
+            Advisors = pagedAdvisors,
+            Teams = pagedTeams,
+            Adjustments = pagedAdjustments,
+            Page = page,
+            PageSize = pageSize,
+            TotalAdvisors = totalAdvisorsCount,
+            TotalTeams = totalTeamsCount,
+            TotalAdjustments = totalAdjustmentsCount
+        };
+    }
+
 }
+

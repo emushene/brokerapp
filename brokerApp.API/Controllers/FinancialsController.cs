@@ -71,6 +71,7 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpGet("statements")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetStatements()
     {
         var statements = await _context.CommissionStatements
@@ -84,7 +85,8 @@ public class FinancialsController : ControllerBase
                 s.UploadDate,
                 s.TotalCommission,
                 s.TotalRows,
-                s.MatchedRows
+                s.MatchedRows,
+                s.Status
             })
             .ToListAsync();
         
@@ -175,7 +177,7 @@ public class FinancialsController : ControllerBase
             .ToListAsync();
 
         var payslips = await _context.CommissionStatements
-            .Where(s => statementIds.Contains(s.Id) && s.Status != "Draft")
+            .Where(s => statementIds.Contains(s.Id))
             .OrderByDescending(s => s.StatementDate)
             .Select(s => new {
                 s.Id,
@@ -221,113 +223,132 @@ public class FinancialsController : ControllerBase
     }
 
     [HttpGet("statements/{id}/payslips")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetStatementPayslips(int id)
     {
-        var statement = await _context.CommissionStatements.FindAsync(id);
-        if (statement == null) return NotFound();
+        try
+        {
+            var statement = await _context.CommissionStatements.FindAsync(id);
+            if (statement == null) return NotFound();
 
-        var allCommissions = await _context.AdvisorCommissions
-            .Include(c => c.Advisor)
-            .Include(c => c.Submission)
-            .Where(c => c.CommissionStatementId == id)
-            .ToListAsync();
+            var allCommissions = await _context.AdvisorCommissions
+                .Include(c => c.Advisor)
+                .Include(c => c.Submission)
+                .Where(c => c.CommissionStatementId == id)
+                .ToListAsync();
 
-        var statementItemPremiums = await _context.StatementItems
-            .Where(si => si.CommissionStatementId == id && si.Premium > 0)
-            .GroupBy(si => si.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First().Premium);
+            var statementItems = await _context.StatementItems
+                .Where(si => si.CommissionStatementId == id)
+                .ToListAsync();
 
-        var movementItemPremiums = await _context.MovementItems
-            .Where(mi => mi.CommissionStatementId == id && mi.Premium > 0)
-            .GroupBy(mi => mi.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First().Premium);
+            var movementItems = await _context.MovementItems
+                .Where(mi => mi.CommissionStatementId == id)
+                .ToListAsync();
 
-        var statementItemsDict = await _context.StatementItems
-            .Where(si => si.CommissionStatementId == id)
-            .GroupBy(si => si.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First());
+            var statementItemPremiums = statementItems
+                .Where(si => si.Premium > 0 && !string.IsNullOrEmpty(si.PolicyNumber))
+                .GroupBy(si => si.PolicyNumber)
+                .ToDictionary(g => g.Key, g => g.First().Premium);
 
-        var grouped = allCommissions.GroupBy(c => c.AdvisorId)
-            .Select(g => new {
-                Advisor = new {
-                    Id = g.Key,
-                    Name = g.First().Advisor.Name,
-                    Code = g.First().Advisor.Code,
-                    Email = g.First().Advisor.Email
-                },
-                TotalAmount = g.Sum(c => c.CommissionAmount),
-                TotalGross = g.Sum(c => c.GrossCommission),
-                TotalRetention = g.Sum(c => c.CommissionRetention),
-                TotalClawbackGross = g.Sum(c => c.ClawBackGross),
-                TotalClawbackRetention = g.Sum(c => c.ClawBackRetention),
-                Commissions = g.Select(c => {
-                    var polNo = c.Submission?.PolicyNumber ?? "";
-                    if (string.IsNullOrEmpty(polNo) && !string.IsNullOrEmpty(c.PayoutReference))
-                    {
-                        var parts = c.PayoutReference.Split(" - ");
-                        if (parts.Length > 1) polNo = parts.Last().Replace("(Direct)", "").Trim();
-                    }
+            var movementItemPremiums = movementItems
+                .Where(mi => mi.Premium > 0 && !string.IsNullOrEmpty(mi.PolicyNumber))
+                .GroupBy(mi => mi.PolicyNumber)
+                .ToDictionary(g => g.Key, g => g.First().Premium);
 
-                    statementItemsDict.TryGetValue(polNo, out var matchedSi);
+            var statementItemsDict = statementItems
+                .Where(si => !string.IsNullOrEmpty(si.PolicyNumber))
+                .GroupBy(si => si.PolicyNumber)
+                .ToDictionary(g => g.Key, g => g.First());
 
-                    decimal prem = 0m;
-                    if (c.Submission != null && c.Submission.Premium > 0) prem = c.Submission.Premium;
-                    else if (!string.IsNullOrEmpty(polNo) && statementItemPremiums.TryGetValue(polNo, out var p1)) prem = p1;
-                    else if (!string.IsNullOrEmpty(polNo) && movementItemPremiums.TryGetValue(polNo, out var p2)) prem = p2;
-                    else if (c.GrossCommission > 0) prem = c.GrossCommission;
-
-                    var retention = c.CommissionRetention > 0 ? c.CommissionRetention : (matchedSi?.CommissionRetention ?? 0m);
-                    if (retention == 0 && c.GrossCommission > 0 && c.SplitPercentage > 0 && c.SplitPercentage < 100)
-                    {
-                        retention = Math.Round(c.GrossCommission * (100m - c.SplitPercentage) / 100m, 2);
-                    }
-                    if (retention == 0 && c.GrossCommission > c.CommissionAmount && c.GrossCommission > 0)
-                    {
-                        retention = Math.Max(0m, c.GrossCommission - c.CommissionAmount - Math.Abs(c.ClawBackGross));
-                    }
-
-                    var cbRetention = c.ClawBackRetention != 0 ? c.ClawBackRetention : (matchedSi?.ClawBackRetention ?? 0m);
-                    if (cbRetention == 0 && c.ClawBackGross != 0 && c.SplitPercentage > 0 && c.SplitPercentage < 100)
-                    {
-                        cbRetention = Math.Round(Math.Abs(c.ClawBackGross) * (100m - c.SplitPercentage) / 100m, 2);
-                    }
-
-                    var gross = c.GrossCommission > 0 ? c.GrossCommission : (matchedSi?.GrossCommission ?? (c.CommissionAmount + retention + Math.Abs(c.ClawBackGross) - cbRetention));
-
+            var grouped = allCommissions.GroupBy(c => c.AdvisorId)
+                .Select(g => {
+                    var firstAdvisor = g.FirstOrDefault(c => c.Advisor != null)?.Advisor;
                     return new {
-                        c.Id,
-                        c.CommissionAmount,
-                        GrossCommission = gross,
-                        CommissionRetention = retention,
-                        c.ClawBackGross,
-                        ClawBackRetention = cbRetention,
-                        c.NettCommission,
-                        c.Product,
-                        c.CaptureDate,
-                        c.ClawBackReason,
-                        c.SplitPercentage,
-                        c.PayoutReference,
-                        ClientName = !string.IsNullOrEmpty(c.Submission?.ApplicantSurname) 
-                            ? c.Submission.ApplicantSurname + " " + c.Submission.Initials 
-                            : (matchedSi?.ClientName ?? (c.PayoutReference ?? "N/A")),
-                        PolicyNumber = string.IsNullOrEmpty(polNo) ? "N/A" : polNo,
-                        Premium = prem,
-                        c.DateCalculated
+                        Advisor = new {
+                            Id = g.Key,
+                            Name = firstAdvisor?.Name ?? "Unknown Advisor",
+                            Code = firstAdvisor?.Code ?? "N/A",
+                            Email = firstAdvisor?.Email ?? ""
+                        },
+                        TotalAmount = g.Sum(c => c.CommissionAmount),
+                        TotalGross = g.Sum(c => c.GrossCommission),
+                        TotalRetention = g.Sum(c => c.CommissionRetention),
+                        TotalClawbackGross = g.Sum(c => c.ClawBackGross),
+                        TotalClawbackRetention = g.Sum(c => c.ClawBackRetention),
+                        Commissions = g.Select(c => {
+                            var polNo = c.Submission?.PolicyNumber ?? "";
+                            if (string.IsNullOrEmpty(polNo) && !string.IsNullOrEmpty(c.PayoutReference))
+                            {
+                                var parts = c.PayoutReference.Split(" - ");
+                                if (parts.Length > 1) polNo = parts.Last().Replace("(Direct)", "").Trim();
+                            }
+
+                            statementItemsDict.TryGetValue(polNo, out var matchedSi);
+
+                            decimal prem = 0m;
+                            if (c.Submission != null && c.Submission.Premium > 0) prem = c.Submission.Premium;
+                            else if (!string.IsNullOrEmpty(polNo) && statementItemPremiums.TryGetValue(polNo, out var p1)) prem = p1;
+                            else if (!string.IsNullOrEmpty(polNo) && movementItemPremiums.TryGetValue(polNo, out var p2)) prem = p2;
+                            else if (c.GrossCommission > 0) prem = c.GrossCommission;
+
+                            var isDeduction = !string.IsNullOrEmpty(c.PayoutReference) && c.PayoutReference.StartsWith("DEDUCTION");
+                            var productVal = !string.IsNullOrWhiteSpace(c.Product) 
+                                ? c.Product 
+                                : (!string.IsNullOrWhiteSpace(matchedSi?.Product) 
+                                    ? matchedSi.Product 
+                                    : "");
+
+                            var categoryVal = !string.IsNullOrWhiteSpace(matchedSi?.CommissionSubType)
+                                ? matchedSi.CommissionSubType
+                                : (!string.IsNullOrWhiteSpace(matchedSi?.CommissionType)
+                                    ? matchedSi.CommissionType
+                                    : (!string.IsNullOrWhiteSpace(matchedSi?.Category)
+                                        ? matchedSi.Category
+                                        : (isDeduction ? "Deduction" : "Commission")));
+
+                            var gross = matchedSi?.GrossCommission ?? (matchedSi?.Amount != 0 ? matchedSi?.Amount : null) ?? c.GrossCommission;
+                            if (gross == 0 && c.CommissionAmount != 0 && c.SplitPercentage > 0)
+                            {
+                                gross = Math.Round(c.CommissionAmount / (c.SplitPercentage / 100m), 2);
+                            }
+
+                            return new {
+                                c.Id,
+                                c.CommissionAmount,
+                                GrossCommission = gross,
+                                Product = productVal,
+                                Category = categoryVal,
+                                c.CaptureDate,
+                                c.ClawBackReason,
+                                c.SplitPercentage,
+                                c.PayoutReference,
+                                ClientName = !string.IsNullOrEmpty(c.Submission?.ApplicantSurname) 
+                                    ? c.Submission.ApplicantSurname + " " + c.Submission.Initials 
+                                    : (matchedSi?.ClientName ?? (c.PayoutReference ?? "N/A")),
+                                PolicyNumber = string.IsNullOrEmpty(polNo) ? "N/A" : polNo,
+                                Premium = prem,
+                                c.DateCalculated
+                            };
+                        })
                     };
                 })
-            })
-            .OrderBy(x => x.Advisor.Name)
-            .ToList();
+                .OrderBy(x => x.Advisor.Name)
+                .ToList();
 
-        return Ok(new {
-            Statement = new {
-                statement.Id,
-                statement.FileName,
-                statement.StatementDate,
-                statement.Status
-            },
-            Payslips = grouped
-        });
+            return Ok(new {
+                Statement = new {
+                    statement.Id,
+                    statement.FileName,
+                    statement.StatementDate,
+                    statement.Status
+                },
+                Payslips = grouped
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ex.Message);
+        }
     }
 
     [HttpGet("advisors/{advisorId}/payslips/{statementId}/pdf")]
@@ -337,15 +358,28 @@ public class FinancialsController : ControllerBase
         var statement = await _context.CommissionStatements.FindAsync(statementId);
         if (statement == null) return NotFound("Statement not found");
 
-        var statementItemPremiums = await _context.StatementItems
-            .Where(si => si.CommissionStatementId == statementId && si.Premium > 0)
-            .GroupBy(si => si.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First().Premium);
+        var statementItems = await _context.StatementItems
+            .Where(si => si.CommissionStatementId == statementId)
+            .ToListAsync();
 
-        var movementItemPremiums = await _context.MovementItems
-            .Where(mi => mi.CommissionStatementId == statementId && mi.Premium > 0)
+        var movementItems = await _context.MovementItems
+            .Where(mi => mi.CommissionStatementId == statementId)
+            .ToListAsync();
+
+        var statementItemPremiums = statementItems
+            .Where(si => si.Premium > 0 && !string.IsNullOrEmpty(si.PolicyNumber))
+            .GroupBy(si => si.PolicyNumber)
+            .ToDictionary(g => g.Key, g => g.First().Premium);
+
+        var movementItemPremiums = movementItems
+            .Where(mi => mi.Premium > 0 && !string.IsNullOrEmpty(mi.PolicyNumber))
             .GroupBy(mi => mi.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First().Premium);
+            .ToDictionary(g => g.Key, g => g.First().Premium);
+
+        var statementItemsDict = statementItems
+            .Where(si => !string.IsNullOrEmpty(si.PolicyNumber))
+            .GroupBy(si => si.PolicyNumber)
+            .ToDictionary(g => g.Key, g => g.First());
 
         var advisor = await _context.Advisors.FindAsync(advisorId);
         if (advisor == null) return NotFound("Advisor not found");
@@ -354,11 +388,6 @@ public class FinancialsController : ControllerBase
             .Include(c => c.Submission)
             .Where(c => c.AdvisorId == advisorId && c.CommissionStatementId == statementId)
             .ToListAsync();
-
-        var statementItemsDict = await _context.StatementItems
-            .Where(si => si.CommissionStatementId == statementId)
-            .GroupBy(si => si.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First());
 
         var items = commissions.Select(c => {
             var polNo = c.Submission?.PolicyNumber ?? "";
@@ -376,23 +405,26 @@ public class FinancialsController : ControllerBase
             else if (!string.IsNullOrEmpty(polNo) && movementItemPremiums.TryGetValue(polNo, out var p2)) prem = p2;
             else if (c.GrossCommission > 0) prem = c.GrossCommission;
 
-            var retention = c.CommissionRetention > 0 ? c.CommissionRetention : (matchedSi?.CommissionRetention ?? 0m);
-            if (retention == 0 && c.GrossCommission > 0 && c.SplitPercentage > 0 && c.SplitPercentage < 100)
-            {
-                retention = Math.Round(c.GrossCommission * (100m - c.SplitPercentage) / 100m, 2);
-            }
-            if (retention == 0 && c.GrossCommission > c.CommissionAmount && c.GrossCommission > 0)
-            {
-                retention = Math.Max(0m, c.GrossCommission - c.CommissionAmount - Math.Abs(c.ClawBackGross));
-            }
+            var isDeduction = !string.IsNullOrEmpty(c.PayoutReference) && c.PayoutReference.StartsWith("DEDUCTION");
+            var productVal = !string.IsNullOrWhiteSpace(c.Product) 
+                ? c.Product 
+                : (!string.IsNullOrWhiteSpace(matchedSi?.Product) 
+                    ? matchedSi.Product 
+                    : "");
 
-            var cbRetention = c.ClawBackRetention != 0 ? c.ClawBackRetention : (matchedSi?.ClawBackRetention ?? 0m);
-            if (cbRetention == 0 && c.ClawBackGross != 0 && c.SplitPercentage > 0 && c.SplitPercentage < 100)
-            {
-                cbRetention = Math.Round(Math.Abs(c.ClawBackGross) * (100m - c.SplitPercentage) / 100m, 2);
-            }
+            var categoryVal = !string.IsNullOrWhiteSpace(matchedSi?.CommissionSubType)
+                ? matchedSi.CommissionSubType
+                : (!string.IsNullOrWhiteSpace(matchedSi?.CommissionType)
+                    ? matchedSi.CommissionType
+                    : (!string.IsNullOrWhiteSpace(matchedSi?.Category)
+                        ? matchedSi.Category
+                        : (isDeduction ? "Deduction" : "Commission")));
 
-            var gross = c.GrossCommission > 0 ? c.GrossCommission : (matchedSi?.GrossCommission ?? (c.CommissionAmount + retention + Math.Abs(c.ClawBackGross) - cbRetention));
+            var gross = matchedSi?.GrossCommission ?? (matchedSi?.Amount != 0 ? matchedSi?.Amount : null) ?? c.GrossCommission;
+            if (gross == 0 && c.CommissionAmount != 0 && c.SplitPercentage > 0)
+            {
+                gross = Math.Round(c.CommissionAmount / (c.SplitPercentage / 100m), 2);
+            }
 
             return new PayslipItemDto
             {
@@ -400,13 +432,12 @@ public class FinancialsController : ControllerBase
                     ? c.Submission.ApplicantSurname + " " + c.Submission.Initials 
                     : (matchedSi?.ClientName ?? (c.PayoutReference ?? "N/A")),
                 PolicyNumber = string.IsNullOrEmpty(polNo) ? "N/A" : polNo,
-                Product = c.Product ?? "",
+                Product = productVal,
+                Category = categoryVal,
                 CaptureDate = c.CaptureDate,
                 Premium = prem,
                 GrossCommission = gross,
-                CommissionRetention = retention,
-                ClawBackGross = c.ClawBackGross,
-                ClawBackRetention = cbRetention,
+                SplitPercentage = c.SplitPercentage,
                 CommissionAmount = c.CommissionAmount,
                 PayoutReference = c.PayoutReference ?? ""
             };
@@ -430,26 +461,34 @@ public class FinancialsController : ControllerBase
         var statement = await _context.CommissionStatements.FindAsync(id);
         if (statement == null) return NotFound("Statement not found");
 
-        var statementItemPremiums = await _context.StatementItems
-            .Where(si => si.CommissionStatementId == id && si.Premium > 0)
-            .GroupBy(si => si.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First().Premium);
+        var statementItems = await _context.StatementItems
+            .Where(si => si.CommissionStatementId == id)
+            .ToListAsync();
 
-        var movementItemPremiums = await _context.MovementItems
-            .Where(mi => mi.CommissionStatementId == id && mi.Premium > 0)
+        var movementItems = await _context.MovementItems
+            .Where(mi => mi.CommissionStatementId == id)
+            .ToListAsync();
+
+        var statementItemPremiums = statementItems
+            .Where(si => si.Premium > 0 && !string.IsNullOrEmpty(si.PolicyNumber))
+            .GroupBy(si => si.PolicyNumber)
+            .ToDictionary(g => g.Key, g => g.First().Premium);
+
+        var movementItemPremiums = movementItems
+            .Where(mi => mi.Premium > 0 && !string.IsNullOrEmpty(mi.PolicyNumber))
             .GroupBy(mi => mi.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First().Premium);
+            .ToDictionary(g => g.Key, g => g.First().Premium);
+
+        var statementItemsDict = statementItems
+            .Where(si => !string.IsNullOrEmpty(si.PolicyNumber))
+            .GroupBy(si => si.PolicyNumber)
+            .ToDictionary(g => g.Key, g => g.First());
 
         var allCommissions = await _context.AdvisorCommissions
             .Include(c => c.Advisor)
             .Include(c => c.Submission)
             .Where(c => c.CommissionStatementId == id)
             .ToListAsync();
-
-        var statementItemsDict = await _context.StatementItems
-            .Where(si => si.CommissionStatementId == id)
-            .GroupBy(si => si.PolicyNumber)
-            .ToDictionaryAsync(g => g.Key, g => g.First());
 
         var grouped = allCommissions.GroupBy(c => c.AdvisorId)
             .Select(g => new GroupedPayslipDto
@@ -473,23 +512,26 @@ public class FinancialsController : ControllerBase
                     else if (!string.IsNullOrEmpty(polNo) && movementItemPremiums.TryGetValue(polNo, out var p2)) prem = p2;
                     else if (c.GrossCommission > 0) prem = c.GrossCommission;
 
-                    var retention = c.CommissionRetention > 0 ? c.CommissionRetention : (matchedSi?.CommissionRetention ?? 0m);
-                    if (retention == 0 && c.GrossCommission > 0 && c.SplitPercentage > 0 && c.SplitPercentage < 100)
-                    {
-                        retention = Math.Round(c.GrossCommission * (100m - c.SplitPercentage) / 100m, 2);
-                    }
-                    if (retention == 0 && c.GrossCommission > c.CommissionAmount && c.GrossCommission > 0)
-                    {
-                        retention = Math.Max(0m, c.GrossCommission - c.CommissionAmount - Math.Abs(c.ClawBackGross));
-                    }
+                    var isDeduction = !string.IsNullOrEmpty(c.PayoutReference) && c.PayoutReference.StartsWith("DEDUCTION");
+                    var productVal = !string.IsNullOrWhiteSpace(c.Product) 
+                        ? c.Product 
+                        : (!string.IsNullOrWhiteSpace(matchedSi?.Product) 
+                            ? matchedSi.Product 
+                            : "");
 
-                    var cbRetention = c.ClawBackRetention != 0 ? c.ClawBackRetention : (matchedSi?.ClawBackRetention ?? 0m);
-                    if (cbRetention == 0 && c.ClawBackGross != 0 && c.SplitPercentage > 0 && c.SplitPercentage < 100)
-                    {
-                        cbRetention = Math.Round(Math.Abs(c.ClawBackGross) * (100m - c.SplitPercentage) / 100m, 2);
-                    }
+                    var categoryVal = !string.IsNullOrWhiteSpace(matchedSi?.CommissionSubType)
+                        ? matchedSi.CommissionSubType
+                        : (!string.IsNullOrWhiteSpace(matchedSi?.CommissionType)
+                            ? matchedSi.CommissionType
+                            : (!string.IsNullOrWhiteSpace(matchedSi?.Category)
+                                ? matchedSi.Category
+                                : (isDeduction ? "Deduction" : "Commission")));
 
-                    var gross = c.GrossCommission > 0 ? c.GrossCommission : (matchedSi?.GrossCommission ?? (c.CommissionAmount + retention + Math.Abs(c.ClawBackGross) - cbRetention));
+                    var gross = matchedSi?.GrossCommission ?? (matchedSi?.Amount != 0 ? matchedSi?.Amount : null) ?? c.GrossCommission;
+                    if (gross == 0 && c.CommissionAmount != 0 && c.SplitPercentage > 0)
+                    {
+                        gross = Math.Round(c.CommissionAmount / (c.SplitPercentage / 100m), 2);
+                    }
 
                     return new PayslipItemDto
                     {
@@ -497,13 +539,12 @@ public class FinancialsController : ControllerBase
                             ? c.Submission.ApplicantSurname + " " + c.Submission.Initials 
                             : (matchedSi?.ClientName ?? (c.PayoutReference ?? "N/A")),
                         PolicyNumber = string.IsNullOrEmpty(polNo) ? "N/A" : polNo,
-                        Product = c.Product ?? "",
+                        Product = productVal,
+                        Category = categoryVal,
                         CaptureDate = c.CaptureDate,
                         Premium = prem,
                         GrossCommission = gross,
-                        CommissionRetention = retention,
-                        ClawBackGross = c.ClawBackGross,
-                        ClawBackRetention = cbRetention,
+                        SplitPercentage = c.SplitPercentage,
                         CommissionAmount = c.CommissionAmount,
                         PayoutReference = c.PayoutReference ?? ""
                     };
@@ -729,6 +770,20 @@ public class FinancialsController : ControllerBase
         var result = await _financialsService.GetOutstandingAdjustmentsAsync(advisorId, groupId);
         return Ok(result);
     }
+
+    [HttpGet("reports/advances-and-gifts")]
+    public async Task<IActionResult> GetAdvancesAndGiftsReport(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? typeFilter = null,
+        [FromQuery] string? statusFilter = null)
+    {
+        var report = await _financialsService.GetAdvancesAndGiftsReportAsync(page, pageSize, searchTerm, typeFilter, statusFilter);
+        return Ok(report);
+    }
+
+
 
     [HttpPost("adjustments/{id}/deduct")]
     public async Task<IActionResult> ApplyDeduction(int id, [FromBody] DeductionRequest dto)

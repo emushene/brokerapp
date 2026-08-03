@@ -131,6 +131,7 @@ export interface StatementItem {
   id: number;
   clientName: string;
   policyNumber: string;
+  product?: string;
   commissionType: string;
   commissionSubType: string;
   amount: number;
@@ -261,3 +262,58 @@ export interface AccountAdjustment {
   promotionalItemName?: string;
   promotionalItem?: PromotionalItem;
 }
+
+export interface ReportSummary {
+  totalAdvancesOwed: number;
+  totalGiftsOwed: number;
+  totalOtherOwed: number;
+  grandTotalOwed: number;
+  activeDebtorAdvisorsCount: number;
+  activeDebtorTeamsCount: number;
+  totalActiveAdjustmentsCount: number;
+}
+
+export interface AdvisorDebtSummary {
+  advisorId: number;
+  advisorName: string;
+  advisorCode: string;
+  phoneNumber: string;
+  email: string;
+  advisorGroupId?: number;
+  advisorGroupName?: string;
+  advancesOwed: number;
+  giftsOwed: number;
+  otherOwed: number;
+  totalOwed: number;
+  totalInitialAdvances: number;
+  totalInitialGifts: number;
+  activeAdjustmentsCount: number;
+}
+
+export interface TeamDebtSummary {
+  groupId: number;
+  groupName: string;
+  description: string;
+  directGroupAdvancesOwed: number;
+  directGroupGiftsOwed: number;
+  directGroupOtherOwed: number;
+  membersAdvancesOwed: number;
+  membersGiftsOwed: number;
+  totalTeamOwed: number;
+  memberCount: number;
+  members: AdvisorDebtSummary[];
+}
+
+export interface AdvancesGiftsReport {
+  summary: ReportSummary;
+  advisors: AdvisorDebtSummary[];
+  teams: TeamDebtSummary[];
+  adjustments: AccountAdjustment[];
+  page?: number;
+  pageSize?: number;
+  totalAdvisors?: number;
+  totalTeams?: number;
+  totalAdjustments?: number;
+}
+
+

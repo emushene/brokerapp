@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace brokerApp.API.Models;
 
@@ -67,6 +68,7 @@ public class MovementItem
     public string MovementType { get; set; } = string.Empty; 
     public DateTime? EffectiveDate { get; set; }
     public decimal Premium { get; set; }
+    [NotMapped]
     public decimal Amount { get; set; }
     public string Category { get; set; } = "Unknown";
 

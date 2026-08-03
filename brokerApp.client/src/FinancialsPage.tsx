@@ -600,33 +600,50 @@ const FinancialsPage: React.FC = () => {
       accessor: (i) => <p className="text-xs font-bold text-slate-300">{i.clientName}</p>
     },
     {
-      header: 'Premium',
-      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-    },
-    {
       header: 'Matched Advisor',
       accessor: (i) => (
         <div className="flex items-center gap-2">
-          {i.isMatched ? (
-            <div className="flex items-center gap-1.5 text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded-full border border-blue-400/20">
-              <ShieldCheck className="w-2.5 h-2.5" />
-              <span className="text-[9px] font-black uppercase tracking-tighter">{i.advisorName}</span>
+          {i.advisorName ? (
+            <div className="flex items-center gap-1.5 text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
+              <ShieldCheck className="w-3 h-3 text-blue-400" />
+              <span className="text-[10px] font-black uppercase tracking-tight">{i.advisorName}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-slate-500 bg-slate-500/5 px-2 py-0.5 rounded-full border border-slate-500/10">
-              <ShieldAlert className="w-2.5 h-2.5" />
-              <span className="text-[9px] font-black uppercase tracking-tighter">No Match Found</span>
+            <div className="flex items-center gap-1.5 text-slate-500 bg-slate-500/10 px-2.5 py-1 rounded-full border border-slate-500/20">
+              <ShieldAlert className="w-3 h-3 text-slate-500" />
+              <span className="text-[10px] font-black uppercase tracking-tight">No Match Found</span>
             </div>
           )}
         </div>
       )
     },
     {
-      header: 'Category',
-      accessor: (i) => <CategoryBadge category={i.category || 'Movement'} />
+      header: 'Scan',
+      accessor: (i) => {
+        const url = i.fileUrl || i.googleDriveLink || (i.matchedSubmission?.documents && i.matchedSubmission.documents.length > 0 ? i.matchedSubmission.documents[0].fileUrl : null);
+        return url ? (
+          <button
+            onClick={(e) => openPdfViewer(e, url)}
+            className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg transition-all"
+            title="View Matched Document"
+          >
+            <FileText className="w-4 h-4 text-blue-400" />
+          </button>
+        ) : (
+          <span className="text-[10px] text-slate-600 font-medium italic">—</span>
+        );
+      }
     },
     {
-      header: 'Action',
+      header: 'Premium',
+      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+    },
+    {
+      header: 'Movement Type',
+      accessor: (i) => <p className="text-xs font-semibold text-slate-400">{i.movementType}</p>
+    },
+    {
+      header: 'Status',
       accessor: (i) => (
         <div className="flex items-center gap-1.5">
            {i.isConfirmed ? (
@@ -649,59 +666,54 @@ const FinancialsPage: React.FC = () => {
       accessor: (i) => <p className="text-xs font-bold text-slate-300">{i.clientName}</p>
     },
     {
-      header: 'Premium',
-      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-    },
-    {
-      header: 'Matched Advisor',
-      accessor: (i) => (
-        <div className="flex items-center gap-2">
-          {i.isMatched ? (
-            <div className="flex items-center gap-1.5 text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded-full border border-blue-400/20">
-              <ShieldCheck className="w-2.5 h-2.5" />
-              <span className="text-[9px] font-black uppercase tracking-tighter">{i.advisorName}</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-slate-500 bg-slate-500/5 px-2 py-0.5 rounded-full border border-slate-500/10">
-              <ShieldAlert className="w-2.5 h-2.5" />
-              <span className="text-[9px] font-black uppercase tracking-tighter">No Match Found</span>
-            </div>
-          )}
-        </div>
-      )
+      header: 'Category',
+      accessor: (i) => <CategoryBadge category={i.category || 'Unknown'} />
     },
     {
       header: 'Sales Force Name',
       accessor: (i) => <p className="text-xs font-semibold text-slate-400">{i.salesForceName || 'N/A'}</p>
     },
     {
-      header: 'Clawback',
-      accessor: (i) => <p className="text-xs font-bold text-red-400">{i.clawBack !== undefined && i.clawBack !== null ? `R ${i.clawBack.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R 0.00'}</p>
-    },
-    {
-      header: 'Clawback (Retention)',
-      accessor: (i) => <p className="text-xs font-bold text-orange-400">{i.clawBackRetention !== undefined && i.clawBackRetention !== null ? `R ${i.clawBackRetention.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R 0.00'}</p>
-    },
-    {
-      header: 'Clawback Reason',
+      header: 'Matched Advisor',
       accessor: (i) => (
-        i.clawBackReason ? (
-          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border tracking-tighter ${
-            i.clawBackReason.toLowerCase().includes('exit') 
-              ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
-              : 'bg-red-500/10 text-red-400 border-red-500/20'
-          }`}>
-            {i.clawBackReason}
-          </span>
-        ) : <span className="text-xs text-slate-500">-</span>
+        <div className="flex items-center gap-2">
+          {i.advisorName ? (
+            <div className="flex items-center gap-1.5 text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">
+              <ShieldCheck className="w-3 h-3 text-blue-400" />
+              <span className="text-[10px] font-black uppercase tracking-tight">{i.advisorName}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-slate-500 bg-slate-500/10 px-2.5 py-1 rounded-full border border-slate-500/20">
+              <ShieldAlert className="w-3 h-3 text-slate-500" />
+              <span className="text-[10px] font-black uppercase tracking-tight">No Match Found</span>
+            </div>
+          )}
+        </div>
       )
     },
     {
-      header: 'Category',
-      accessor: (i) => <CategoryBadge category={i.category || 'Unknown'} />
+      header: 'Scan',
+      accessor: (i) => {
+        const url = i.fileUrl || i.googleDriveLink || (i.matchedSubmission?.documents && i.matchedSubmission.documents.length > 0 ? i.matchedSubmission.documents[0].fileUrl : null);
+        return url ? (
+          <button
+            onClick={(e) => openPdfViewer(e, url)}
+            className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg transition-all"
+            title="View Matched Document"
+          >
+            <FileText className="w-4 h-4 text-blue-400" />
+          </button>
+        ) : (
+          <span className="text-[10px] text-slate-600 font-medium italic">—</span>
+        );
+      }
     },
     {
-      header: 'Net Commission',
+      header: 'Premium',
+      accessor: (i) => <p className="text-xs font-black text-white">R {i.premium.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+    },
+    {
+      header: 'Net Comm.',
       accessor: (i) => <p className={`text-xs font-black ${i.amount < 0 ? 'text-red-500' : 'text-green-500'}`}>R {i.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
     }
   ];
@@ -753,6 +765,23 @@ const FinancialsPage: React.FC = () => {
            <span className="text-xs font-semibold text-slate-300">{i.advisorName || 'Not Assigned'}</span>
         </div>
       )
+    },
+    {
+      header: 'Scan',
+      accessor: (i) => {
+        const url = (i.matchedSubmission?.documents && i.matchedSubmission.documents.length > 0 ? i.matchedSubmission.documents[0].fileUrl : null);
+        return url ? (
+          <button
+            onClick={(e) => openPdfViewer(e, url)}
+            className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg transition-all"
+            title="View Matched Document"
+          >
+            <FileText className="w-4 h-4 text-blue-400" />
+          </button>
+        ) : (
+          <span className="text-[10px] text-slate-600 font-medium italic">—</span>
+        );
+      }
     }
   ];
 
@@ -760,23 +789,23 @@ const FinancialsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">Commission Statements</h1>
-          <p className="text-slate-400 mt-2">Reconcile insurance statements and manage payouts.</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Commission Statements</h1>
+          <p className="text-slate-400 mt-1 text-xs sm:text-sm">Reconcile insurance statements and manage payouts.</p>
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded-2xl border border-slate-800">
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
-            <Calendar className="w-3.5 h-3.5 text-blue-500" />
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-slate-900/50 p-2 rounded-2xl border border-slate-800">
+          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 w-full sm:w-auto">
+            <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
             <input 
               type="date"
               value={statementDate}
               onChange={(e) => setStatementDate(e.target.value)}
-              className="bg-transparent text-white text-xs font-bold outline-none border-none focus:ring-0"
+              className="bg-transparent text-white text-xs font-bold outline-none border-none focus:ring-0 w-full"
             />
           </div>
-          <div className="relative group">
+          <div className="relative group w-full sm:w-auto">
             <input 
               type="file" 
               accept=".xlsx"
@@ -791,16 +820,16 @@ const FinancialsPage: React.FC = () => {
               }}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
             />
-            <div className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors border border-slate-700">
-              <Upload className="w-3.5 h-3.5 text-blue-500" />
-              {statementFile ? statementFile.name : 'Choose File'}
+            <div className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors border border-slate-700 w-full">
+              <Upload className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="truncate max-w-[180px]">{statementFile ? statementFile.name : 'Choose File'}</span>
             </div>
           </div>
           {statementFile && (
             <button 
               onClick={handleImportStatement}
               disabled={isUploading}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 w-full sm:w-auto flex items-center justify-center gap-1.5"
             >
               {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Process'}
             </button>
@@ -808,22 +837,22 @@ const FinancialsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
-        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Net Revenue</span>
-           <span className="text-lg font-black text-white">R {totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+           <span className="text-base sm:text-lg font-black text-white">R {totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
-        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between">
+        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Internal Debt</span>
-           <span className="text-lg font-black text-amber-500">R {globalAdjustments.reduce((s, a) => s + a.remainingBalance, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+           <span className="text-base sm:text-lg font-black text-amber-500">R {globalAdjustments.reduce((s, a) => s + a.remainingBalance, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
-        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between">
+        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">History</span>
-           <span className="text-lg font-black text-blue-500">{statements.length}</span>
+           <span className="text-base sm:text-lg font-black text-blue-500">{statements.length}</span>
         </div>
-        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between">
+        <div className="bg-slate-800/30 border border-slate-700/50 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Matched Items</span>
-           <span className="text-lg font-black text-green-500">{importResult?.matchedRows || 0}</span>
+           <span className="text-base sm:text-lg font-black text-green-500">{importResult?.matchedRows || 0}</span>
         </div>
       </div>
 

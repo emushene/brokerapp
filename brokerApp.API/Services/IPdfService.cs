@@ -21,12 +21,11 @@ public class PayslipItemDto
     public string ClientName { get; set; } = string.Empty;
     public string PolicyNumber { get; set; } = string.Empty;
     public string Product { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
     public DateTime? CaptureDate { get; set; }
     public decimal Premium { get; set; }
     public decimal GrossCommission { get; set; }
-    public decimal CommissionRetention { get; set; }
-    public decimal ClawBackGross { get; set; }
-    public decimal ClawBackRetention { get; set; }
+    public decimal SplitPercentage { get; set; }
     public decimal CommissionAmount { get; set; }
     public string PayoutReference { get; set; } = string.Empty;
 }

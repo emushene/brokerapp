@@ -115,6 +115,7 @@ public class ApplicationDbContext : DbContext
             .IsRequired(false);
 
         modelBuilder.Entity<MovementItem>()
+            .Ignore(m => m.Amount)
             .HasOne(i => i.MatchedSubmission)
             .WithMany()
             .HasForeignKey(i => i.MatchedSubmissionId)

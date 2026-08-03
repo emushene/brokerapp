@@ -7,11 +7,8 @@ interface CommissionLineItem {
   id: number;
   commissionAmount: number;
   grossCommission: number;
-  commissionRetention: number;
-  clawBackGross: number;
-  clawBackRetention: number;
-  nettCommission: number;
   product?: string;
+  category?: string;
   captureDate?: string;
   clawBackReason?: string;
   splitPercentage: number;
@@ -31,9 +28,6 @@ interface GroupedPayslip {
   };
   totalAmount: number;
   totalGross?: number;
-  totalRetention?: number;
-  totalClawbackGross?: number;
-  totalClawbackRetention?: number;
   commissions: CommissionLineItem[];
 }
 
@@ -72,10 +66,9 @@ const AdvisorPayslipsPage: React.FC = () => {
     try {
       setLoading(true);
       const data = await financialsApi.getStatements();
-      const concluded = data.filter(s => s.status !== 'Draft');
-      setStatements(concluded);
-      if (concluded.length > 0) {
-        handleSelectStatement(concluded[0].id);
+      setStatements(data);
+      if (data.length > 0) {
+        handleSelectStatement(data[0].id);
       }
     } catch (error) {
       console.error('Error fetching statements', error);
@@ -140,20 +133,9 @@ const AdvisorPayslipsPage: React.FC = () => {
     );
   }
 
-  const getItemRetention = (item: CommissionLineItem) => {
-    if (item.commissionRetention && item.commissionRetention > 0) return item.commissionRetention;
-    const gross = item.grossCommission || 0;
-    const net = item.commissionAmount || 0;
-    const cb = item.clawBackGross || 0;
-    if (gross > 0 && gross > net + cb) return gross - net - cb;
-    return 0;
-  };
-
   const renderPrintablePayslip = (slip: GroupedPayslip) => {
-    const totalGross = slip.commissions.reduce((sum, item) => sum + (item.grossCommission || item.nettCommission || item.commissionAmount), 0);
-    const totalRetention = slip.commissions.reduce((sum, item) => sum + getItemRetention(item), 0);
-    const totalClawbackGross = slip.commissions.reduce((sum, item) => sum + (item.clawBackGross || 0), 0);
-    const totalClawbackRetention = slip.commissions.reduce((sum, item) => sum + (item.clawBackRetention || 0), 0);
+    const totalGross = slip.commissions.reduce((sum, item) => sum + (item.grossCommission || item.commissionAmount), 0);
+    const totalPremium = slip.commissions.reduce((sum, item) => sum + (item.premium || 0), 0);
     const totalNet = slip.totalAmount;
 
     return (
@@ -184,71 +166,49 @@ const AdvisorPayslipsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mb-4">
-          <h3 className="text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-slate-100 pb-1">Detailed Policy Breakdown</h3>
-        </div>
-
-        <table className="w-full mb-6 border-collapse text-left">
+        <table className="w-full mb-4 border-collapse text-left">
           <thead>
             <tr className="bg-slate-100 border-b border-slate-300 text-[8px] font-black uppercase text-slate-700">
               <th className="p-1">Client Name</th>
               <th className="p-1">Policy #</th>
               <th className="p-1">Product</th>
+              <th className="p-1">Category</th>
               <th className="p-1 text-right">Premium</th>
               <th className="p-1 text-right">Gross Comm</th>
-              <th className="p-1 text-right">Retention</th>
-              <th className="p-1 text-right">Clawback (G)</th>
-              <th className="p-1 text-right">Clawback (R)</th>
-              <th className="p-1 text-right font-black">Net Comm</th>
-              <th className="p-1 text-right font-black">Advisor Net</th>
-              <th className="p-1">Reason</th>
+              <th className="p-1 text-right">Split %</th>
+              <th className="p-1 text-right font-black">Advisor Payout</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-[8px]">
-            {slip.commissions.map(item => {
-              const grossComm = item.grossCommission || item.nettCommission || item.commissionAmount;
-              const ret = getItemRetention(item);
-              const cbGross = item.clawBackGross || 0;
-              const cbRet = item.clawBackRetention || 0;
-              const netComm = item.nettCommission || (grossComm - ret - cbGross + cbRet);
-              const advisorNet = item.commissionAmount;
-
-              return (
-                <tr key={item.id} className="text-left">
-                  <td className="p-1 font-bold text-slate-900">{item.clientName || 'N/A'}</td>
-                  <td className="p-1 font-mono text-slate-700">{item.policyNumber || 'N/A'}</td>
-                  <td className="p-1 text-slate-700">{item.product || 'Excellence'}</td>
-                  <td className="p-1 text-right font-medium">{item.premium ? `R ${item.premium.toFixed(2)}` : '-'}</td>
-                  <td className="p-1 text-right font-medium text-slate-800">R {grossComm.toFixed(2)}</td>
-                  <td className="p-1 text-right text-slate-600">{ret ? `R ${ret.toFixed(2)}` : '-'}</td>
-                  <td className="p-1 text-right text-red-600">{cbGross ? `R ${cbGross.toFixed(2)}` : '-'}</td>
-                  <td className="p-1 text-right text-green-700">{cbRet ? `R ${cbRet.toFixed(2)}` : '-'}</td>
-                  <td className="p-1 text-right font-bold text-slate-900">R {netComm.toFixed(2)}</td>
-                  <td className={`p-1 text-right font-black ${advisorNet < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-                    R {advisorNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </td>
-                  <td className="p-1 text-slate-500 italic">{item.clawBackReason || '-'}</td>
-                </tr>
-              );
-            })}
+            {slip.commissions.map(item => (
+              <tr key={item.id} className="text-left">
+                <td className="p-1 font-bold text-slate-900">{item.clientName || item.payoutReference || 'N/A'}</td>
+                <td className="p-1 font-mono text-slate-700">{item.policyNumber || '-'}</td>
+                <td className="p-1 text-slate-700">{item.product || '-'}</td>
+                <td className="p-1 text-slate-700 font-medium">{item.category || 'Commission'}</td>
+                <td className="p-1 text-right font-medium">{item.premium ? `R ${item.premium.toFixed(2)}` : '-'}</td>
+                <td className="p-1 text-right font-medium text-slate-800">R {item.grossCommission.toFixed(2)}</td>
+                <td className="p-1 text-right text-slate-700">{item.splitPercentage ? `${item.splitPercentage}%` : '-'}</td>
+                <td className={`p-1 text-right font-black ${item.commissionAmount < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                  R {item.commissionAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            ))}
           </tbody>
           <tfoot>
             <tr className="bg-slate-100 font-black text-[9px] border-t-2 border-slate-900">
-              <td colSpan={4} className="p-1.5 uppercase text-slate-700">Total Statements Summary</td>
+              <td colSpan={4} className="p-1.5 uppercase text-slate-700">Statement Totals</td>
+              <td className="p-1.5 text-right">R {totalPremium.toFixed(2)}</td>
               <td className="p-1.5 text-right">R {totalGross.toFixed(2)}</td>
-              <td className="p-1.5 text-right">R {totalRetention.toFixed(2)}</td>
-              <td className="p-1.5 text-right text-red-600">R {totalClawbackGross.toFixed(2)}</td>
-              <td className="p-1.5 text-right text-green-700">R {totalClawbackRetention.toFixed(2)}</td>
-              <td className="p-1.5 text-right text-slate-900">
-                R {slip.commissions.reduce((s, c) => s + (c.nettCommission || (c.grossCommission - c.commissionRetention - c.clawBackGross + c.clawBackRetention)), 0).toFixed(2)}
+              <td className="p-1.5 text-right">-</td>
+              <td className={`p-1.5 text-right font-black ${totalNet < 0 ? 'text-red-600' : 'text-slate-900'} bg-slate-200`}>
+                R {totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
-              <td className="p-1.5 text-right text-slate-900 bg-slate-200">R {totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td></td>
             </tr>
           </tfoot>
         </table>
 
-        <div className="mt-8 pt-4 border-t border-slate-200 flex justify-between items-center text-[8px] text-slate-400 uppercase font-bold tracking-widest">
+        <div className="mt-6 pt-3 border-t border-slate-200 flex justify-between items-center text-[8px] text-slate-400 uppercase font-bold tracking-widest">
           <p>Private & Confidential - BrokerApp Financial Statement</p>
           <p>System Verified</p>
         </div>
@@ -421,11 +381,20 @@ const AdvisorPayslipsPage: React.FC = () => {
                             {new Date(s.statementDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
                           </p>
                         </div>
-                        {isSelected && (
-                          <span className="text-[9px] font-black uppercase text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded-md border border-blue-500/30">
-                            Active
-                          </span>
-                        )}
+                        <div className="flex flex-col items-end gap-1">
+                          {isSelected && (
+                            <span className="text-[9px] font-black uppercase text-blue-400 bg-blue-500/20 px-2 py-0.5 rounded-md border border-blue-500/30">
+                              Active
+                            </span>
+                          )}
+                          {s.status && (
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                              s.status === 'Concluded' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                            }`}>
+                              {s.status}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -608,75 +577,80 @@ const AdvisorPayslipsPage: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar space-y-6">
-               <div className="bg-slate-800/30 border border-slate-700/50 rounded-3xl p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Advisor Code</p>
-                    <p className="text-base md:text-lg font-bold text-white">{selectedPayslip.advisor.code}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Statement Date</p>
-                    <p className="text-base md:text-lg font-bold text-white">{new Date(statementData.statement.statementDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Policies</p>
-                    <p className="text-base md:text-lg font-bold text-blue-400">{selectedPayslip.commissions.length} Items</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Net Payout</p>
-                    <p className={`text-xl md:text-2xl font-black ${selectedPayslip.totalAmount < 0 ? 'text-red-500' : 'text-emerald-400'}`}>
-                      R {selectedPayslip.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-               </div>
+               {(() => {
+                 const totalGross = selectedPayslip.commissions.reduce((sum, item) => sum + (item.grossCommission || item.commissionAmount), 0);
+                 const totalPremium = selectedPayslip.commissions.reduce((sum, item) => sum + (item.premium || 0), 0);
+                 const totalNet = selectedPayslip.totalAmount;
 
-               <div className="border border-slate-800 rounded-3xl overflow-x-auto custom-scrollbar">
-                  <table className="w-full text-left border-collapse min-w-[1000px]">
-                    <thead className="bg-slate-800/80 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-700/50">
-                      <tr>
-                        <th className="px-3 py-3">Client Name</th>
-                        <th className="px-3 py-3">Policy #</th>
-                        <th className="px-3 py-3">Product</th>
-                        <th className="px-3 py-3 text-right">Premium</th>
-                        <th className="px-3 py-3 text-right">Gross Comm</th>
-                        <th className="px-3 py-3 text-right">Retention</th>
-                        <th className="px-3 py-3 text-right">Clawback (G)</th>
-                        <th className="px-3 py-3 text-right">Clawback (R)</th>
-                        <th className="px-3 py-3 text-right font-black text-blue-400">Net Comm</th>
-                        <th className="px-3 py-3 text-right font-black text-emerald-400">Advisor Net</th>
-                        <th className="px-3 py-3">Reason</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50 text-xs">
-                      {selectedPayslip.commissions.map((item) => {
-                        const isDeduction = item.commissionAmount < 0 && item.payoutReference?.startsWith('DEDUCTION:');
-                        const grossComm = item.grossCommission || item.nettCommission || item.commissionAmount;
-                        const ret = getItemRetention(item);
-                        const cbGross = item.clawBackGross || 0;
-                        const cbRet = item.clawBackRetention || 0;
-                        const netComm = item.nettCommission || (grossComm - ret - cbGross + cbRet);
-                        const advisorNet = item.commissionAmount;
+                 return (
+                   <>
+                     <div className="bg-slate-800/30 border border-slate-700/50 rounded-3xl p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Advisor Code</p>
+                          <p className="text-base md:text-lg font-bold text-white">{selectedPayslip.advisor.code}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Statement Date</p>
+                          <p className="text-base md:text-lg font-bold text-white">{new Date(statementData.statement.statementDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Commission Items</p>
+                          <p className="text-base md:text-lg font-bold text-blue-400">{selectedPayslip.commissions.length} Items</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Net Payout</p>
+                          <p className={`text-xl md:text-2xl font-black ${selectedPayslip.totalAmount < 0 ? 'text-red-500' : 'text-emerald-400'}`}>
+                            R {selectedPayslip.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                     </div>
 
-                        return (
-                          <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
-                            <td className="px-3 py-2.5 font-bold text-white">{item.clientName || 'N/A'}</td>
-                            <td className="px-3 py-2.5 font-mono text-slate-400 text-[11px]">{item.policyNumber || 'N/A'}</td>
-                            <td className="px-3 py-2.5 text-slate-300">{item.product || (isDeduction ? 'Adjustment' : 'Excellence')}</td>
-                            <td className="px-3 py-2.5 text-right font-medium text-slate-300">{item.premium ? `R ${item.premium.toFixed(2)}` : '-'}</td>
-                            <td className="px-3 py-2.5 text-right text-slate-300">{isDeduction ? '-' : `R ${grossComm.toFixed(2)}`}</td>
-                            <td className="px-3 py-2.5 text-right text-slate-400">{ret ? `R ${ret.toFixed(2)}` : '-'}</td>
-                            <td className="px-3 py-2.5 text-right text-red-400">{cbGross ? `R ${cbGross.toFixed(2)}` : '-'}</td>
-                            <td className="px-3 py-2.5 text-right text-emerald-400">{cbRet ? `R ${cbRet.toFixed(2)}` : '-'}</td>
-                            <td className="px-3 py-2.5 text-right text-slate-200 font-bold">{isDeduction ? '-' : `R ${netComm.toFixed(2)}`}</td>
-                            <td className={`px-3 py-2.5 text-right font-black ${advisorNet < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                              R {advisorNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-3 py-2.5 text-slate-500 italic text-[10px]">{item.clawBackReason || '-'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                     <div className="border border-slate-800 rounded-3xl overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse min-w-[900px]">
+                          <thead className="bg-slate-800/80 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-700/50">
+                            <tr>
+                              <th className="px-4 py-3">Client Name</th>
+                              <th className="px-4 py-3">Policy #</th>
+                              <th className="px-4 py-3">Product</th>
+                              <th className="px-4 py-3">Category</th>
+                              <th className="px-4 py-3 text-right">Premium</th>
+                              <th className="px-4 py-3 text-right">Gross Comm</th>
+                              <th className="px-4 py-3 text-right">Split %</th>
+                              <th className="px-4 py-3 text-right font-black text-emerald-400">Advisor Payout</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/50 text-xs">
+                            {selectedPayslip.commissions.map((item) => (
+                              <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
+                                <td className="px-4 py-3 font-bold text-white">{item.clientName || item.payoutReference || 'N/A'}</td>
+                                <td className="px-4 py-3 font-mono text-slate-400 text-[11px]">{item.policyNumber || '-'}</td>
+                                <td className="px-4 py-3 text-slate-300">{item.product || '-'}</td>
+                                <td className="px-4 py-3 text-slate-300 font-medium">{item.category || 'Commission'}</td>
+                                <td className="px-4 py-3 text-right font-medium text-slate-300">{item.premium ? `R ${item.premium.toFixed(2)}` : '-'}</td>
+                                <td className="px-4 py-3 text-right text-slate-300">R {item.grossCommission.toFixed(2)}</td>
+                                <td className="px-4 py-3 text-right text-slate-400">{item.splitPercentage ? `${item.splitPercentage}%` : '-'}</td>
+                                <td className={`px-4 py-3 text-right font-black ${item.commissionAmount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                  R {item.commissionAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-slate-800/90 font-black text-xs border-t-2 border-slate-700">
+                            <tr>
+                              <td colSpan={4} className="px-4 py-3 text-slate-300 uppercase">Statement Totals</td>
+                              <td className="px-4 py-3 text-right text-slate-200">R {totalPremium.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-right text-slate-200">R {totalGross.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-right text-slate-400">-</td>
+                              <td className="px-4 py-3 text-right text-emerald-400 bg-emerald-950/30">
+                                R {totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                     </div>
+                   </>
+                 );
+               })()}
             </div>
             <div className="p-6 md:p-8 bg-slate-800/30 border-t border-slate-800 flex justify-end gap-4">
               <button 

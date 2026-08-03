@@ -157,7 +157,7 @@ export function DataTable<T extends { id: string | number }>({
       {/* Table Container */}
       <div className="bg-[#111827]/80 border border-slate-800/90 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse table-fixed">
+          <table className="w-full min-w-[640px] text-left border-collapse">
             <thead>
               <tr className="bg-[#1e293b]/50 border-b border-slate-800 text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
                 {columns.map((col, i) => {

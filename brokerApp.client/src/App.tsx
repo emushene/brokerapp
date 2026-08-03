@@ -12,6 +12,7 @@ import AdvisorPayslipsPage from './AdvisorPayslipsPage';
 import AdvancesPage from './AdvancesPage';
 import PromotionalGiftsPage from './PromotionalGiftsPage';
 import SettlementsPage from './SettlementsPage';
+import ReportsPage from './ReportsPage';
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
             <Route path="/settlements" element={<SettlementsPage />} />
             <Route path="/advances" element={<AdvancesPage />} />
             <Route path="/promotional-gifts" element={<PromotionalGiftsPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/payslips" element={<AdvisorPayslipsPage />} />
             <Route path="/payslips/:advisorId" element={<AdvisorPayslipsPage />} />
           </Route>
@@ -41,5 +43,6 @@ function App() {
     </AuthProvider>
   );
 }
+
 
 export default App;

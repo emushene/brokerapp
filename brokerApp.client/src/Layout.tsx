@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, LogOut, User as UserIcon, Menu, Users, DollarSign, BarChart3, Receipt, Wallet, Package, CreditCard, Shield } from 'lucide-react';
+import { LayoutDashboard, FileText, LogOut, User as UserIcon, Menu, Users, DollarSign, BarChart3, Receipt, Wallet, Package, CreditCard, Shield, FileBarChart } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 const Layout: React.FC = () => {
@@ -21,9 +21,11 @@ const Layout: React.FC = () => {
     { label: 'Pay Slips', path: '/payslips', icon: Receipt },
     { label: 'Advances', path: '/advances', icon: Wallet },
     { label: 'Promotional Gifts', path: '/promotional-gifts', icon: Package },
+    { label: 'Reports & Balances', path: '/reports', icon: FileBarChart },
     { label: 'Manage Advisors', path: '/advisors', icon: Users },
     { label: 'Performance', path: '/performance', icon: BarChart3 },
   ];
+
 
   return (
     <div className="flex h-screen bg-[#0b0f19] text-slate-100 font-sans antialiased selection:bg-blue-600/30">
